@@ -1,25 +1,28 @@
 // src/views/screens/CoopListScreen.jsx
 import { MaterialIcons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import useAppStore from '../../controllers/context/AppStore';
 import {
-    COLORS,
-    COOP_STATUS,
-    FONTS, FONT_SIZES, FONT_WEIGHTS,
-    LAYOUT,
-    RADIUS,
-    ROUTES,
-    SHADOWS,
-    SPACING,
+  COLORS,
+  COOP_STATUS,
+  FONTS, FONT_SIZES, FONT_WEIGHTS,
+  LAYOUT,
+  RADIUS,
+  ROUTES,
+  SHADOWS,
+  SPACING,
 } from '../../models/utils/constants';
 
 // ─────────────────────────────────────────
@@ -31,10 +34,8 @@ const CoopCard = ({ coop, onPress }) => {
   const isHealthy  = coop.status === COOP_STATUS.HEALTHY;
 
   const borderColor = isCritical
-    ? COLORS.error
-    : isWarning
-    ? COLORS.secondary
-    : COLORS.statusHealthy;
+    ? COLORS.error : isWarning
+    ? COLORS.secondary : COLORS.statusHealthy;
 
   return (
     <TouchableOpacity
@@ -42,33 +43,31 @@ const CoopCard = ({ coop, onPress }) => {
       onPress={onPress}
       activeOpacity={0.85}
     >
-      {/* ── En-tête carte */}
+      {/* Header */}
       <View style={styles.coopCardHeader}>
         <View>
           <Text style={styles.coopSector}>{coop.sector}</Text>
           <Text style={styles.coopName}>{coop.name}</Text>
         </View>
-
-        {/* Badge statut */}
         {isHealthy && (
           <View style={styles.badgeSafe}>
-            <Text style={styles.badgeSafeText}>Safe</Text>
+            <Text style={styles.badgeSafeText}>Sain</Text>
           </View>
         )}
         {isWarning && (
           <View style={styles.badgeWarning}>
             <View style={styles.badgePulse} />
-            <Text style={styles.badgeWarningText}>High Temp</Text>
+            <Text style={styles.badgeWarningText}>Attention</Text>
           </View>
         )}
         {isCritical && (
           <View style={styles.badgeCritical}>
-            <Text style={styles.badgeCriticalText}>Critical</Text>
+            <Text style={styles.badgeCriticalText}>Critique</Text>
           </View>
         )}
       </View>
 
-      {/* ── Stats population + mortalité */}
+      {/* Stats */}
       <View style={styles.coopStats}>
         <View style={styles.statBox}>
           <Text style={styles.statLabel}>Population</Text>
@@ -81,15 +80,15 @@ const CoopCard = ({ coop, onPress }) => {
           <Text style={styles.statLabel}>Mortalité</Text>
           <Text style={[
             styles.statValue,
-            isWarning && styles.statValueWarning,
-            isCritical && styles.statValueCritical,
+            isWarning  && { color: COLORS.secondary },
+            isCritical && { color: COLORS.error },
           ]}>
             {coop.mortality}%
           </Text>
         </View>
       </View>
 
-      {/* ── Footer : capteurs ou alerte */}
+      {/* Footer */}
       <View style={styles.coopFooter}>
         {isHealthy && (
           <View style={styles.coopSensors}>
@@ -103,19 +102,18 @@ const CoopCard = ({ coop, onPress }) => {
             </View>
           </View>
         )}
-        {isWarning && (
+        {(isWarning || isCritical) && (
           <View style={styles.warningRow}>
-            <MaterialIcons name="warning" size={18} color={COLORS.secondary} />
-            <Text style={styles.warningText}>
-              {coop.warningMessage || `Temp: ${coop.temperature}°C détectée`}
-            </Text>
-          </View>
-        )}
-        {isCritical && (
-          <View style={styles.warningRow}>
-            <MaterialIcons name="error" size={18} color={COLORS.error} />
-            <Text style={[styles.warningText, { color: COLORS.error }]}>
-              {coop.warningMessage || 'Situation critique'}
+            <MaterialIcons
+              name={isCritical ? 'error' : 'warning'}
+              size={18}
+              color={isCritical ? COLORS.error : COLORS.secondary}
+            />
+            <Text style={[
+              styles.warningText,
+              { color: isCritical ? COLORS.error : COLORS.secondary },
+            ]}>
+              {coop.warningMessage || `Temp: ${coop.temperature}°C`}
             </Text>
           </View>
         )}
@@ -126,39 +124,109 @@ const CoopCard = ({ coop, onPress }) => {
 };
 
 // ─────────────────────────────────────────
-// 🧩 CHIP FILTRE
+// 🧩 FILTER CHIP
 // ─────────────────────────────────────────
-const FilterChip = ({ label, count, active, color, onPress }) => (
+const FilterChip = ({ label, active, color, onPress }) => (
   <TouchableOpacity
-    style={[styles.filterChip, active && { backgroundColor: color + '20', borderColor: color }]}
+    style={[
+      styles.filterChip,
+      active && { backgroundColor: color + '20', borderColor: color },
+    ]}
     onPress={onPress}
     activeOpacity={0.8}
   >
     {active && <View style={[styles.filterDot, { backgroundColor: color }]} />}
     <Text style={[styles.filterChipText, active && { color }]}>{label}</Text>
-    {count !== undefined && (
-      <Text style={[styles.filterCount, active && { color }]}>{count}</Text>
-    )}
   </TouchableOpacity>
+);
+
+// ─────────────────────────────────────────
+// 🧩 USER MENU MODAL (déconnexion)
+// ─────────────────────────────────────────
+const UserMenuModal = ({ visible, user, onClose, onLogout, onProfile }) => (
+  <Modal
+    visible={visible}
+    transparent
+    animationType="fade"
+    onRequestClose={onClose}
+  >
+    <TouchableOpacity
+      style={styles.modalOverlay}
+      activeOpacity={1}
+      onPress={onClose}
+    >
+      <View style={styles.userMenu}>
+        {/* En-tête utilisateur */}
+        <View style={styles.userMenuHeader}>
+          <View style={styles.userMenuAvatar}>
+            {user?.avatar ? (
+              <Image source={{ uri: user.avatar }} style={styles.userMenuAvatarImg} />
+            ) : (
+              <View style={[styles.userMenuAvatarImg, styles.userMenuAvatarFallback]}>
+                <Text style={styles.userMenuAvatarInitials}>
+                  {user?.name?.charAt(0) || 'U'}
+                </Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.userMenuInfo}>
+            <Text style={styles.userMenuName} numberOfLines={1}>{user?.name || 'Utilisateur'}</Text>
+            <Text style={styles.userMenuRole} numberOfLines={1}>{user?.role || ''}</Text>
+          </View>
+        </View>
+
+        <View style={styles.userMenuDivider} />
+
+        {/* Option : Mon profil */}
+        <TouchableOpacity
+          style={styles.userMenuItem}
+          onPress={onProfile}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.userMenuItemIcon, { backgroundColor: COLORS.primary + '15' }]}>
+            <MaterialIcons name="person" size={18} color={COLORS.primary} />
+          </View>
+          <Text style={styles.userMenuItemText}>Mon profil</Text>
+          <MaterialIcons name="chevron-right" size={18} color={COLORS.outline} />
+        </TouchableOpacity>
+
+        <View style={styles.userMenuDivider} />
+
+        {/* Option : Déconnexion */}
+        <TouchableOpacity
+          style={styles.userMenuItem}
+          onPress={onLogout}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.userMenuItemIcon, { backgroundColor: COLORS.errorContainer }]}>
+            <MaterialIcons name="logout" size={18} color={COLORS.error} />
+          </View>
+          <Text style={[styles.userMenuItemText, { color: COLORS.error }]}>
+            Se déconnecter
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  </Modal>
 );
 
 // ─────────────────────────────────────────
 // 📱 COOP LIST SCREEN
 // ─────────────────────────────────────────
 const CoopListScreen = ({ navigation }) => {
-  const coops         = useAppStore((s) => s.coops);
-  const unreadCount   = useAppStore((s) => s.unreadAlertsCount);
-  const { setSelectedCoop } = useAppStore();
+  const coops       = useAppStore((s) => s.coops);
+  const unreadCount = useAppStore((s) => s.unreadAlertsCount);
+  const user        = useAppStore((s) => s.user);
+  const { setSelectedCoop, logout } = useAppStore();
 
-  const [search, setSearch]   = useState('');
-  const [filter, setFilter]   = useState('all');
+  const [search,     setSearch]     = useState('');
+  const [filter,     setFilter]     = useState('all');
+  const [menuVisible, setMenuVisible] = useState(false);
 
-  // ── Compteurs par statut
   const healthyCount  = coops.filter((c) => c.status === COOP_STATUS.HEALTHY).length;
   const warningCount  = coops.filter((c) => c.status === COOP_STATUS.WARNING).length;
   const criticalCount = coops.filter((c) => c.status === COOP_STATUS.CRITICAL).length;
 
-  // ── Filtrage combiné recherche + filtre
   const filteredCoops = useMemo(() => {
     let result = coops;
     if (search.trim()) {
@@ -168,44 +236,102 @@ const CoopListScreen = ({ navigation }) => {
           c.sector.toLowerCase().includes(search.toLowerCase())
       );
     }
-    if (filter !== 'all') {
-      result = result.filter((c) => c.status === filter);
-    }
+    if (filter !== 'all') result = result.filter((c) => c.status === filter);
     return result;
   }, [coops, search, filter]);
 
-  // ── Navigation vers détail coop
-  const handleCoopPress = (coop) => {
-    setSelectedCoop(coop);
-    navigation.navigate(ROUTES.CAMERA);
+  // ── Tap sur une coop
+  const handleCoopPress = async (coop) => {
+    await setSelectedCoop(coop);
+    navigation.navigate(ROUTES.HOME);
   };
 
-  // ─────────────────────────────────────────
-  // 🎨 RENDER
-  // ─────────────────────────────────────────
+  // ── Déconnexion avec confirmation
+  const handleLogout = () => {
+    setMenuVisible(false);
+    Alert.alert(
+      'Déconnexion',
+      'Êtes-vous sûr de vouloir vous déconnecter ?',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Se déconnecter',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+          },
+        },
+      ]
+    );
+  };
+
+  // ── Aller au profil
+  const handleProfile = () => {
+    setMenuVisible(false);
+    navigation.navigate(ROUTES.PROFILE);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
 
       {/* ── Top App Bar */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
+          {/* Avatar → ouvre le menu utilisateur */}
+          <TouchableOpacity
+            style={styles.avatarWrapper}
+            onPress={() => setMenuVisible(true)}
+            activeOpacity={0.8}
+          >
+            {user?.avatar ? (
+              <Image source={{ uri: user.avatar }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={styles.avatarInitials}>
+                  {user?.name?.charAt(0) || 'U'}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <Text style={styles.topBarTitle}>PoulIA</Text>
         </View>
-        <TouchableOpacity
-          style={styles.notifBtn}
-          onPress={() => navigation.navigate(ROUTES.ALERTS)}
-          activeOpacity={0.8}
-        >
-          <MaterialIcons name="notifications" size={24} color={COLORS.emerald400} />
-          {unreadCount > 0 && (
-            <View style={styles.notifBadge}>
-              <Text style={styles.notifBadgeText}>
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
+
+        <View style={styles.topBarRight}>
+          {/* Notifications */}
+          <TouchableOpacity
+            style={styles.notifBtn}
+            onPress={() => navigation.getParent()?.navigate(ROUTES.ALERTS)}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="notifications" size={24} color={COLORS.emerald400} />
+            {unreadCount > 0 && (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Bouton déconnexion rapide */}
+          <TouchableOpacity
+            style={styles.logoutBtn}
+            onPress={handleLogout}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="logout" size={20} color={COLORS.emerald400} />
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* ── Menu utilisateur modal */}
+      <UserMenuModal
+        visible={menuVisible}
+        user={user}
+        onClose={() => setMenuVisible(false)}
+        onLogout={handleLogout}
+        onProfile={handleProfile}
+      />
 
       <ScrollView
         style={styles.scroll}
@@ -213,70 +339,87 @@ const CoopListScreen = ({ navigation }) => {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── Titre + Sous-titre */}
+        {/* ── Titre */}
         <View style={styles.titleSection}>
           <Text style={styles.sectionLabel}>Estate Management</Text>
-          <Text style={styles.screenTitle}>My Coops</Text>
+          <Text style={styles.screenTitle}>Mes Poulaillers</Text>
+        </View>
+
+        {/* ── Résumé rapide */}
+        <View style={styles.summaryRow}>
+          <View style={[styles.summaryChip, { backgroundColor: COLORS.statusHealthyBg }]}>
+            <MaterialIcons name="check-circle" size={12} color={COLORS.statusHealthy} />
+            <Text style={[styles.summaryChipText, { color: COLORS.statusHealthy }]}>
+              {healthyCount} Sains
+            </Text>
+          </View>
+          {warningCount > 0 && (
+            <View style={[styles.summaryChip, { backgroundColor: COLORS.statusWarningBg }]}>
+              <MaterialIcons name="warning" size={12} color={COLORS.secondary} />
+              <Text style={[styles.summaryChipText, { color: COLORS.secondary }]}>
+                {warningCount} Attention
+              </Text>
+            </View>
+          )}
+          {criticalCount > 0 && (
+            <View style={[styles.summaryChip, { backgroundColor: COLORS.errorContainer }]}>
+              <MaterialIcons name="error" size={12} color={COLORS.error} />
+              <Text style={[styles.summaryChipText, { color: COLORS.error }]}>
+                {criticalCount} Critique
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* ── Barre de recherche */}
         <View style={styles.searchWrapper}>
-          <MaterialIcons
-            name="search"
-            size={22}
-            color={COLORS.outline}
-            style={styles.searchIcon}
-          />
+          <MaterialIcons name="search" size={22} color={COLORS.outline} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search coops..."
+            placeholder="Rechercher un poulailler..."
             placeholderTextColor={COLORS.onSurfaceVariant}
             value={search}
             onChangeText={setSearch}
-            clearButtonMode="while-editing"
             returnKeyType="search"
           />
           {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setSearch('')}>
               <MaterialIcons name="close" size={18} color={COLORS.outline} />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* ── Chips de filtre */}
+        {/* ── Filtres */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filtersRow}
         >
           <FilterChip
-            label="Tous"
-            count={coops.length}
-            active={filter === 'all'}
-            color={COLORS.primary}
-            onPress={() => setFilter('all')}
+            label="Tous" active={filter === 'all'}
+            color={COLORS.primary} onPress={() => setFilter('all')}
           />
           <FilterChip
-            label={`${healthyCount} Healthy`}
+            label={`${healthyCount} Sains`}
             active={filter === COOP_STATUS.HEALTHY}
             color={COLORS.statusHealthy}
             onPress={() => setFilter(COOP_STATUS.HEALTHY)}
           />
           <FilterChip
-            label={`${warningCount} Warning`}
+            label={`${warningCount} Attention`}
             active={filter === COOP_STATUS.WARNING}
             color={COLORS.secondary}
             onPress={() => setFilter(COOP_STATUS.WARNING)}
           />
           <FilterChip
-            label={`${criticalCount} Critical`}
+            label={`${criticalCount} Critique`}
             active={filter === COOP_STATUS.CRITICAL}
             color={COLORS.error}
             onPress={() => setFilter(COOP_STATUS.CRITICAL)}
           />
         </ScrollView>
 
-        {/* ── Liste des coops */}
+        {/* ── Liste coops */}
         {filteredCoops.length === 0 ? (
           <View style={styles.emptyState}>
             <MaterialIcons name="search-off" size={48} color={COLORS.outlineVariant} />
@@ -303,16 +446,11 @@ const CoopListScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Espace bottom nav */}
         <View style={{ height: LAYOUT.bottomNavHeight + SPACING['2xl'] }} />
       </ScrollView>
 
-      {/* ── FAB Ajouter coop */}
-      <TouchableOpacity
-        style={styles.fab}
-        activeOpacity={0.85}
-        onPress={() => {}}
-      >
+      {/* ── FAB ajouter coop */}
+      <TouchableOpacity style={styles.fab} activeOpacity={0.85}>
         <MaterialIcons name="add" size={28} color={COLORS.white} />
       </TouchableOpacity>
     </SafeAreaView>
@@ -323,10 +461,7 @@ const CoopListScreen = ({ navigation }) => {
 // 🎨 STYLES
 // ─────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-  },
+  safe: { flex: 1, backgroundColor: COLORS.surface },
 
   // ── Top Bar
   topBar: {
@@ -343,6 +478,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.md,
   },
+  topBarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  avatarWrapper: {
+    width: 40, height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: COLORS.emerald400 + '60',
+  },
+  avatar: { width: '100%', height: '100%' },
+  avatarFallback: {
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.white,
+  },
   topBarTitle: {
     fontFamily: FONTS.manrope,
     fontSize: FONT_SIZES.xl,
@@ -350,28 +509,104 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     letterSpacing: -0.5,
   },
-  notifBtn: {
-    position: 'relative',
-    padding: SPACING.xs,
-  },
+  notifBtn: { position: 'relative', padding: SPACING.xs },
   notifBadge: {
     position: 'absolute',
-    top: 0,
-    right: 0,
+    top: 0, right: 0,
     backgroundColor: COLORS.error,
     borderRadius: RADIUS.full,
-    minWidth: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
+    minWidth: 16, height: 16,
+    alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 3,
     borderWidth: 1.5,
     borderColor: COLORS.emerald950,
   },
   notifBadgeText: {
-    fontSize: 9,
+    fontSize: 9, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white,
+  },
+  logoutBtn: {
+    padding: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.white10,
+  },
+
+  // ── Modal menu utilisateur
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    paddingTop: LAYOUT.topBarHeight + 60,
+    paddingLeft: SPACING['2xl'],
+  },
+  userMenu: {
+    backgroundColor: COLORS.white,
+    borderRadius: RADIUS.xl,
+    width: 260,
+    ...SHADOWS.xl,
+    overflow: 'hidden',
+  },
+  userMenuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    padding: SPACING.xl,
+    backgroundColor: COLORS.primary,
+  },
+  userMenuAvatar: {
+    width: 44, height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: COLORS.white20,
+  },
+  userMenuAvatarImg: { width: '100%', height: '100%' },
+  userMenuAvatarFallback: {
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userMenuAvatarInitials: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.lg,
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.white,
+  },
+  userMenuInfo: { flex: 1 },
+  userMenuName: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.md,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.white,
+  },
+  userMenuRole: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.white60,
+    marginTop: 2,
+  },
+  userMenuDivider: {
+    height: 1,
+    backgroundColor: COLORS.surfaceContainer,
+  },
+  userMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    padding: SPACING.xl,
+  },
+  userMenuItemIcon: {
+    width: 36, height: 36,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userMenuItemText: {
+    flex: 1,
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semiBold,
+    color: COLORS.onSurface,
   },
 
   // ── Scroll
@@ -379,10 +614,11 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: SPACING['2xl'],
     paddingTop: SPACING['2xl'],
+    gap: SPACING.lg,
   },
 
   // ── Titre
-  titleSection: { marginBottom: SPACING.lg },
+  titleSection: { gap: 2 },
   sectionLabel: {
     fontFamily: FONTS.inter,
     fontSize: FONT_SIZES.xs,
@@ -390,7 +626,6 @@ const styles = StyleSheet.create({
     color: COLORS.onSurfaceVariant,
     textTransform: 'uppercase',
     letterSpacing: 2,
-    marginBottom: 4,
   },
   screenTitle: {
     fontFamily: FONTS.manrope,
@@ -400,6 +635,26 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
 
+  // ── Résumé
+  summaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  summaryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+  },
+  summaryChipText: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+
   // ── Recherche
   searchWrapper: {
     flexDirection: 'row',
@@ -407,7 +662,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceContainer,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
     ...SHADOWS.sm,
   },
   searchIcon: { marginRight: SPACING.md },
@@ -422,7 +676,6 @@ const styles = StyleSheet.create({
   // ── Filtres
   filtersRow: {
     gap: SPACING.sm,
-    paddingBottom: SPACING.lg,
     paddingRight: SPACING['2xl'],
   },
   filterChip: {
@@ -437,28 +690,16 @@ const styles = StyleSheet.create({
     borderColor: COLORS.outlineVariant + '50',
     ...SHADOWS.sm,
   },
-  filterDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
+  filterDot: { width: 8, height: 8, borderRadius: 4 },
   filterChipText: {
     fontFamily: FONTS.inter,
     fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.onSurfaceVariant,
   },
-  filterCount: {
-    fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.onSurfaceVariant,
-  },
 
-  // ── Liste coops
+  // ── Coop Cards
   coopList: { gap: SPACING.lg },
-
-  // ── Coop Card
   coopCard: {
     backgroundColor: COLORS.surfaceContainerLow,
     borderRadius: RADIUS.lg,
@@ -487,8 +728,6 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.extraBold,
     color: COLORS.primary,
   },
-
-  // Badges
   badgeSafe: {
     backgroundColor: COLORS.statusHealthyBg,
     paddingHorizontal: SPACING.md,
@@ -508,9 +747,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   badgePulse: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 8, height: 8, borderRadius: 4,
     backgroundColor: COLORS.secondary,
   },
   badgeWarningText: {
@@ -533,12 +770,7 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     textTransform: 'uppercase',
   },
-
-  // Stats
-  coopStats: {
-    flexDirection: 'row',
-    gap: SPACING.lg,
-  },
+  coopStats: { flexDirection: 'row', gap: SPACING.lg },
   statBox: {
     flex: 1,
     backgroundColor: COLORS.surfaceContainer,
@@ -560,17 +792,12 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.extraBold,
     color: COLORS.primary,
   },
-  statValueWarning: { color: COLORS.secondary },
-  statValueCritical: { color: COLORS.error },
   statUnit: {
     fontFamily: FONTS.inter,
     fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.regular,
     color: COLORS.onSurfaceVariant,
     opacity: 0.6,
   },
-
-  // Footer
   coopFooter: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -579,15 +806,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: COLORS.outlineVariant + '30',
   },
-  coopSensors: {
-    flexDirection: 'row',
-    gap: SPACING.lg,
-  },
-  sensorChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
+  coopSensors: { flexDirection: 'row', gap: SPACING.lg },
+  sensorChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   sensorChipText: {
     fontFamily: FONTS.inter,
     fontSize: FONT_SIZES.sm,
@@ -604,7 +824,6 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.inter,
     fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.secondary,
     flex: 1,
   },
 

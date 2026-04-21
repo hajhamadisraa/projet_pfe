@@ -1,10 +1,16 @@
-const router = require('express').Router();
-const ctrl = require('../controllers/alertController');
+const express = require('express');
+const router  = express.Router();
+const { getAll, getById, create, dismiss } = require('../controllers/alertController');
 const { protect } = require('../middlewares/authMiddleware');
 
 router.use(protect);
-router.get('/',        ctrl.getAll);
-router.post('/',       ctrl.create);
-router.delete('/:id',  ctrl.dismiss);
+
+router.route('/')
+  .get(getAll)
+  .post(create);
+
+router.route('/:id')
+  .get(getById)
+  .delete(dismiss);
 
 module.exports = router;

@@ -1,13 +1,17 @@
-const router = require('express').Router();
-const ctrl = require('../controllers/coopController');
+const express = require('express');
+const router  = express.Router();
+const { getAll, getById, create, update, remove } = require('../controllers/coopController');
 const { protect } = require('../middlewares/authMiddleware');
 
-router.use(protect); // toutes les routes nécessitent d'être connecté
+router.use(protect);
 
-router.get('/',     ctrl.getAll);
-router.get('/:id',  ctrl.getById);
-router.post('/',    ctrl.create);
-router.put('/:id',  ctrl.update);
-router.delete('/:id', ctrl.remove);
+router.route('/')
+  .get(getAll)
+  .post(create);
+
+router.route('/:id')
+  .get(getById)
+  .put(update)
+  .delete(remove);
 
 module.exports = router;

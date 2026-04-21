@@ -3,8 +3,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
-  Image,
-  ImageBackground,
+  Image, ImageBackground,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,8 +28,8 @@ import { MOCK_FLOCK } from '../../models/utils/mockData';
 // ─────────────────────────────────────────
 const SensorCard = ({ icon, label, value, unit, trend, alertActive }) => {
   const trendColor =
-    alertActive    ? COLORS.error :
-    trend === 'up' ? COLORS.error :
+    alertActive      ? COLORS.error :
+    trend === 'up'   ? COLORS.error :
     trend === 'down' ? COLORS.statusHealthy : COLORS.outline;
 
   const trendIcon =
@@ -55,7 +54,24 @@ const SensorCard = ({ icon, label, value, unit, trend, alertActive }) => {
 };
 
 // ─────────────────────────────────────────
-// 📱 HOME SCREEN
+// 🧩 SHORTCUT BUTTON
+// ─────────────────────────────────────────
+const ShortcutBtn = ({ icon, label, color, onPress }) => (
+  <TouchableOpacity
+    style={[styles.shortcutBtn, { borderColor: color + '30' }]}
+    onPress={onPress}
+    activeOpacity={0.8}
+  >
+    <View style={[styles.shortcutIconBox, { backgroundColor: color + '15' }]}>
+      <MaterialIcons name={icon} size={22} color={color} />
+    </View>
+    <Text style={[styles.shortcutLabel, { color: COLORS.primary }]}>{label}</Text>
+    <MaterialIcons name="chevron-right" size={16} color={COLORS.outline} />
+  </TouchableOpacity>
+);
+
+// ─────────────────────────────────────────
+// 📱 HOME SCREEN (Dashboard)
 // ─────────────────────────────────────────
 const HomeScreen = ({ navigation }) => {
   const user         = useAppStore((s) => s.user);
@@ -87,13 +103,14 @@ const HomeScreen = ({ navigation }) => {
     },
   ] : [];
 
-  // ── Navigations correctes depuis un Stack imbriqué dans un Tab
-  const goToProfile      = () => navigation.navigate(ROUTES.PROFILE);
-  const goToAlerts       = () => navigation.getParent()?.navigate(ROUTES.ALERTS);
-  const goToHealth       = () => navigation.getParent()?.navigate(ROUTES.HEALTH);
-  const goToCamera       = () => navigation.navigate(ROUTES.CAMERA);
-  const goToFeeding      = () => navigation.navigate(ROUTES.FEEDING);
-  const goToUserMgmt     = () => navigation.navigate(ROUTES.USER_MANAGEMENT);
+  // ── Navigations
+  const goBack        = () => navigation.goBack();
+  const goToFeeding   = () => navigation.navigate(ROUTES.FEEDING);
+  const goToCamera    = () => navigation.navigate(ROUTES.CAMERA);
+  const goToEquipment = () => navigation.navigate(ROUTES.SETTINGS);
+  const goToHealth    = () => navigation.navigate(ROUTES.HEALTH);
+  const goToAlerts    = () => navigation.getParent()?.navigate(ROUTES.ALERTS);
+  const goToProfile   = () => navigation.navigate(ROUTES.PROFILE);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -101,6 +118,35 @@ const HomeScreen = ({ navigation }) => {
       {/* ── Top App Bar */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
+          {/* Bouton retour vers CoopList */}
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={goBack}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="arrow-back" size={20} color={COLORS.white} />
+          </TouchableOpacity>
+          <Text style={styles.topBarTitle} numberOfLines={1}>
+            {selectedCoop?.name || 'Dashboard'}
+          </Text>
+        </View>
+        <View style={styles.topBarRight}>
+          {/* Notif */}
+          <TouchableOpacity
+            style={styles.notifBtn}
+            onPress={goToAlerts}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="notifications" size={24} color={COLORS.emerald400} />
+            {unreadCount > 0 && (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          {/* Avatar → Profil */}
           <TouchableOpacity
             style={styles.avatarWrapper}
             onPress={goToProfile}
@@ -116,22 +162,7 @@ const HomeScreen = ({ navigation }) => {
               </View>
             )}
           </TouchableOpacity>
-          <Text style={styles.topBarTitle}>PoulIA</Text>
         </View>
-        <TouchableOpacity
-          style={styles.notifBtn}
-          onPress={goToAlerts}
-          activeOpacity={0.8}
-        >
-          <MaterialIcons name="notifications" size={24} color={COLORS.emerald400} />
-          {unreadCount > 0 && (
-            <View style={styles.notifBadge}>
-              <Text style={styles.notifBadgeText}>
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -139,19 +170,31 @@ const HomeScreen = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Nom ferme + sélecteur coop */}
+        {/* ── Label ferme */}
         <View style={styles.farmHeader}>
           <View>
             <Text style={styles.farmLabel}>Estate Dashboard</Text>
             <Text style={styles.farmName}>{farm?.name || 'PoulIA Green Farm'}</Text>
           </View>
-          <TouchableOpacity style={styles.coopSelector} activeOpacity={0.8}>
-            <MaterialIcons name="location-on" size={14} color={COLORS.primary} />
-            <Text style={styles.coopSelectorText}>
-              {selectedCoop?.name?.split('-')[1]?.trim() || 'Delta-4'}
+          {/* Badge santé du coop */}
+          <View style={[
+            styles.coopStatusBadge,
+            { backgroundColor: selectedCoop?.status === 'warning'
+                ? COLORS.statusWarningBg
+                : COLORS.statusHealthyBg },
+          ]}>
+            <MaterialIcons
+              name={selectedCoop?.status === 'warning' ? 'warning' : 'check-circle'}
+              size={14}
+              color={selectedCoop?.status === 'warning' ? COLORS.secondary : COLORS.statusHealthy}
+            />
+            <Text style={[
+              styles.coopStatusText,
+              { color: selectedCoop?.status === 'warning' ? COLORS.secondary : COLORS.statusHealthy },
+            ]}>
+              {selectedCoop?.status === 'warning' ? 'Attention' : 'Sain'}
             </Text>
-            <MaterialIcons name="expand-more" size={16} color={COLORS.outline} />
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* ── Carte Population */}
@@ -167,13 +210,13 @@ const HomeScreen = ({ navigation }) => {
           </View>
           <View style={styles.populationRow}>
             <Text style={styles.populationCount}>
-              {farm?.totalPopulation?.toLocaleString('fr-FR') || '12,450'}
+              {selectedCoop?.population?.toLocaleString('fr-FR')
+                || farm?.totalPopulation?.toLocaleString('fr-FR')
+                || '12,450'}
             </Text>
             <View style={styles.populationTrend}>
               <MaterialIcons name="trending-up" size={14} color={COLORS.emerald400} />
-              <Text style={styles.populationTrendText}>
-                +{farm?.populationTrend || 2.4}%
-              </Text>
+              <Text style={styles.populationTrendText}>+{farm?.populationTrend || 2.4}%</Text>
             </View>
           </View>
           <View style={styles.populationFooter}>
@@ -190,35 +233,33 @@ const HomeScreen = ({ navigation }) => {
           ))}
         </View>
 
-        {/* ── Raccourcis rapides */}
-        <View style={styles.shortcutsRow}>
-          <TouchableOpacity
-            style={styles.shortcutBtn}
+        {/* ══════════════════════════════════
+            RACCOURCIS PRINCIPAUX
+            Alimentation | Cam IA | Équipement
+        ══════════════════════════════════ */}
+        <Text style={styles.shortcutsTitle}>Gestion du poulailler</Text>
+        <View style={styles.shortcutsList}>
+          <ShortcutBtn
+            icon="restaurant"
+            label="Alimentation & Abreuvement"
+            color={COLORS.statusHealthy}
             onPress={goToFeeding}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="restaurant" size={20} color={COLORS.primary} />
-            <Text style={styles.shortcutLabel}>Alimentation</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.shortcutBtn}
+          />
+          <ShortcutBtn
+            icon="videocam"
+            label="Caméra IA — Surveillance live"
+            color={COLORS.primary}
             onPress={goToCamera}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="videocam" size={20} color={COLORS.primary} />
-            <Text style={styles.shortcutLabel}>Caméra IA</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.shortcutBtn}
-            onPress={goToUserMgmt}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="group" size={20} color={COLORS.primary} />
-            <Text style={styles.shortcutLabel}>Équipe</Text>
-          </TouchableOpacity>
+          />
+          <ShortcutBtn
+            icon="settings"
+            label="Équipements & Automatisation"
+            color={COLORS.secondary}
+            onPress={goToEquipment}
+          />
         </View>
 
-        {/* ── Carte Effectif */}
+        {/* ── Carte Effectif → Santé */}
         <TouchableOpacity
           style={styles.flockCard}
           activeOpacity={0.85}
@@ -232,7 +273,7 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.flockTitle}>Effectif</Text>
               <View style={styles.flockCountRow}>
                 <Text style={styles.flockCount}>
-                  {MOCK_FLOCK.total.toLocaleString('fr-FR')}
+                  {selectedCoop?.population?.toLocaleString('fr-FR') || MOCK_FLOCK.total.toLocaleString('fr-FR')}
                 </Text>
                 <Text style={styles.flockUnit}> {MOCK_FLOCK.unit}</Text>
               </View>
@@ -241,7 +282,9 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.flockRight}>
             <View>
               <Text style={styles.flockMortalityLabel}>Mortalité :</Text>
-              <Text style={styles.flockMortalityValue}>{MOCK_FLOCK.mortality}%</Text>
+              <Text style={styles.flockMortalityValue}>
+                {selectedCoop?.mortality || MOCK_FLOCK.mortality}%
+              </Text>
             </View>
             <MaterialIcons name="chevron-right" size={24} color={COLORS.outline} />
           </View>
@@ -276,7 +319,7 @@ const HomeScreen = ({ navigation }) => {
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* ── Live Feed */}
+        {/* ── Live Feed → Caméra */}
         <TouchableOpacity
           style={styles.liveFeedWrapper}
           activeOpacity={0.9}
@@ -292,7 +335,9 @@ const HomeScreen = ({ navigation }) => {
               style={styles.liveFeedOverlay}
             >
               <Text style={styles.liveFeedLabel}>Live Feed</Text>
-              <Text style={styles.liveFeedTitle}>Automated Area 04</Text>
+              <Text style={styles.liveFeedTitle}>
+                {selectedCoop?.name || 'Automated Area 04'}
+              </Text>
               <View style={styles.liveFeedSubRow}>
                 <MaterialIcons name="videocam" size={14} color={COLORS.secondary} />
                 <Text style={styles.liveFeedSubText}>
@@ -313,10 +358,7 @@ const HomeScreen = ({ navigation }) => {
 // 🎨 STYLES
 // ─────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-  },
+  safe: { flex: 1, backgroundColor: COLORS.surface },
 
   // ── Top Bar
   topBar: {
@@ -332,11 +374,41 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
+    flex: 1,
   },
+  backBtn: {
+    padding: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.white10,
+  },
+  topBarTitle: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: COLORS.white,
+    letterSpacing: -0.3,
+    flex: 1,
+  },
+  topBarRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  notifBtn: { position: 'relative', padding: SPACING.xs },
+  notifBadge: {
+    position: 'absolute',
+    top: 0, right: 0,
+    backgroundColor: COLORS.error,
+    borderRadius: RADIUS.full,
+    minWidth: 16, height: 16,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 3,
+    borderWidth: 1.5, borderColor: COLORS.primary,
+  },
+  notifBadgeText: { fontSize: 9, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white },
   avatarWrapper: {
-    width: LAYOUT.avatarMd,
-    height: LAYOUT.avatarMd,
-    borderRadius: LAYOUT.avatarMd / 2,
+    width: 36, height: 36,
+    borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1.5,
     borderColor: COLORS.white10,
@@ -349,35 +421,7 @@ const styles = StyleSheet.create({
   },
   avatarInitials: {
     fontFamily: FONTS.manrope,
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.white,
-  },
-  topBarTitle: {
-    fontFamily: FONTS.manrope,
-    fontSize: FONT_SIZES.xl,
-    fontWeight: FONT_WEIGHTS.extraBold,
-    color: COLORS.white,
-    letterSpacing: -0.5,
-  },
-  notifBtn: {
-    position: 'relative',
-    padding: SPACING.xs,
-  },
-  notifBadge: {
-    position: 'absolute',
-    top: 0, right: 0,
-    backgroundColor: COLORS.error,
-    borderRadius: RADIUS.full,
-    minWidth: 16, height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-    borderWidth: 1.5,
-    borderColor: COLORS.primary,
-  },
-  notifBadgeText: {
-    fontSize: 9,
+    fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.white,
   },
@@ -412,25 +456,23 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     letterSpacing: -0.5,
   },
-  coopSelector: {
+  coopStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: COLORS.surfaceContainer,
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant + '50',
+    borderRadius: RADIUS.full,
   },
-  coopSelectorText: {
+  coopStatusText: {
     fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.sm,
+    fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.onSurface,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
 
-  // ── Population Card
+  // ── Population
   populationCard: {
     borderRadius: RADIUS.xl,
     padding: SPACING['2xl'],
@@ -543,33 +585,40 @@ const styles = StyleSheet.create({
   sensorUnit: {
     fontFamily: FONTS.inter,
     fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.regular,
     color: COLORS.onSurfaceVariant,
     opacity: 0.6,
   },
 
   // ── Shortcuts
-  shortcutsRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  shortcutBtn: {
-    flex: 1,
-    backgroundColor: COLORS.surfaceContainerLow,
-    borderRadius: RADIUS.lg,
-    paddingVertical: SPACING.lg,
-    alignItems: 'center',
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.outlineVariant + '40',
-    ...SHADOWS.sm,
-  },
-  shortcutLabel: {
-    fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.xs,
+  shortcutsTitle: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.lg,
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.primary,
-    textAlign: 'center',
+    letterSpacing: -0.2,
+  },
+  shortcutsList: { gap: SPACING.md },
+  shortcutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.lg,
+    backgroundColor: COLORS.surfaceContainerLow,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    ...SHADOWS.sm,
+  },
+  shortcutIconBox: {
+    width: 44, height: 44,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shortcutLabel: {
+    flex: 1,
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semiBold,
   },
 
   // ── Flock Card
@@ -591,14 +640,11 @@ const styles = StyleSheet.create({
     gap: SPACING.lg,
   },
   flockAvatar: {
-    width: LAYOUT.avatarLg,
-    height: LAYOUT.avatarLg,
+    width: LAYOUT.avatarLg, height: LAYOUT.avatarLg,
     borderRadius: LAYOUT.avatarLg / 2,
     backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.white,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: COLORS.white,
   },
   flockAvatarText: {
     fontFamily: FONTS.manrope,
@@ -626,7 +672,6 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.inter,
     fontSize: FONT_SIZES.xs,
     color: COLORS.onSurfaceVariant,
-    fontWeight: FONT_WEIGHTS.medium,
   },
   flockRight: {
     flexDirection: 'row',
@@ -639,7 +684,6 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.error,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   flockMortalityValue: {
     fontFamily: FONTS.manrope,
@@ -674,8 +718,7 @@ const styles = StyleSheet.create({
     width: 48, height: 48,
     backgroundColor: COLORS.secondary,
     borderRadius: RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     ...SHADOWS.secondary,
   },
   alertsTitle: {
@@ -706,7 +749,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: FONT_WEIGHTS.extraBold,
     color: COLORS.white,
-    letterSpacing: 0.5,
   },
 
   // ── Live Feed
@@ -715,13 +757,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...SHADOWS.md,
   },
-  liveFeed: {
-    height: 200,
-    width: '100%',
-  },
-  liveFeedImage: {
-    borderRadius: RADIUS['2xl'],
-  },
+  liveFeed: { height: 180, width: '100%' },
+  liveFeedImage: { borderRadius: RADIUS['2xl'] },
   liveFeedOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
