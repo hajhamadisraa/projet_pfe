@@ -3,17 +3,17 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Animated,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Animated,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import useAppStore from '../../controllers/context/AppStore';
@@ -124,8 +124,8 @@ const LoginScreen = () => {
                 defaultSource={{ uri: 'https://via.placeholder.com/128x128/012D1D/FFFFFF?text=P' }}
               />
             </View>
-            <Text style={styles.appName}>PoulIA</Text>
-            <Text style={styles.tagline}>Digital Agronomist</Text>
+            <Text style={styles.appName}>Smart Poulailler</Text>
+            <Text style={styles.tagline}>Ferme connectée</Text>
           </View>
 
           {/* ── Carte formulaire */}

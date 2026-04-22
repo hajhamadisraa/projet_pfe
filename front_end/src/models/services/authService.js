@@ -1,46 +1,69 @@
 // src/models/services/authService.js
 import { API } from '../utils/constants';
 
+const BASE = `${API.BASE_URL}/auth`;
+
+const headers = (token) => ({
+  'Content-Type': 'application/json',
+  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+});
+
+const handleResponse = async (response) => {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.message ?? `Erreur ${response.status}`);
+  }
+  return data;
+};
+
 export const authService = {
+
   async login(email, password) {
-    const response = await fetch(`${API.BASE_URL}/auth/login`, {
+    const res = await fetch(`${BASE}/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers(),
       body: JSON.stringify({ email, password }),
     });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.message ?? `Erreur ${response.status}`);
-    }
-
-    const data = await response.json();
+    const data = await handleResponse(res);
     return { user: data.user, token: data.token };
+  },
+
+  async register(name, email, password) {
+    const res = await fetch(`${BASE}/register`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ name, email, password }),
+    });
+    const data = await handleResponse(res);
+    return { user: data.user, token: data.token };
+  },
+
+  async getProfile(token) {
+    const res = await fetch(`${BASE}/me`, {
+      method: 'GET',
+      headers: headers(token),
+    });
+    const data = await handleResponse(res);
+    return data.user;
+  },
+
+  async updateProfile(token, fields) {
+    const res = await fetch(`${BASE}/updateprofile`, {
+      method: 'PUT',
+      headers: headers(token),
+      body: JSON.stringify(fields),
+    });
+    return handleResponse(res);
   },
 
   async logout(token) {
     try {
-      await fetch(`${API.BASE_URL}/auth/logout`, {
+      await fetch(`${BASE}/logout`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: headers(token),
       });
     } catch {
       // Silencieux — déconnexion locale quoi qu'il arrive
     }
-  },
-
-  async refreshToken(token) {
-    const response = await fetch(`${API.BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) throw new Error('Session expirée, veuillez vous reconnecter.');
-    return response.json();
   },
 };

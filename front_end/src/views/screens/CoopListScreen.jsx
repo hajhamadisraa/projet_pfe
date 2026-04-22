@@ -341,7 +341,6 @@ const CoopListScreen = ({ navigation }) => {
       >
         {/* ── Titre */}
         <View style={styles.titleSection}>
-          <Text style={styles.sectionLabel}>Estate Management</Text>
           <Text style={styles.screenTitle}>Mes Poulaillers</Text>
         </View>
 

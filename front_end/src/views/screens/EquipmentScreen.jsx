@@ -1,11 +1,11 @@
 // src/views/screens/EquipmentScreen.jsx
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
+  Image,
   ScrollView,
-  StyleSheet,
-  Switch,
+  StyleSheet, Switch,
   Text,
   TouchableOpacity,
   View
@@ -13,77 +13,101 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import useAppStore from '../../controllers/context/AppStore';
 import {
-  COLORS,
-  EQUIPMENT_MODE,
   FONTS, FONT_SIZES, FONT_WEIGHTS,
-  GRADIENTS,
   LAYOUT,
   RADIUS, SHADOWS,
-  SPACING,
+  SPACING
 } from '../../models/utils/constants';
-import { MOCK_DISTRIBUTORS } from '../../models/utils/mockData';
+
+// ─────────────────────────────────────────
+// 🎨 DESIGN TOKENS (fidèles au HTML)
+// ─────────────────────────────────────────
+const C = {
+  primaryContainer: '#0A3D27',  // bg-primary-container
+  primary:          '#012D1D',  // bg-primary
+  primaryLight:     '#1B4332',
+  secondary:        '#FE6A34',  // bg-secondary (orange)
+  error:            '#B3261E',
+  errorContainer:   '#F9DEDC',
+  surfaceContainerLow: '#FFFFFF',
+  surfaceContainerHigh:'#E8EAEB',
+  surfaceVariant:   '#E1E3E4',
+  onSurfaceVariant: '#44474F',
+  emerald400:       '#34D399',
+  emerald800:       '#065F46',
+  emerald50:        '#ECFDF5',
+  white:            '#FFFFFF',
+  primaryFixed:     '#C8E6C9',
+  primaryFixedDim:  '#A5D6A7',
+  onTertiaryContainer: '#1B5E20',
+};
 
 // ─────────────────────────────────────────
 // 🧩 EQUIPMENT CARD
 // ─────────────────────────────────────────
 const EquipmentCard = ({ item, onToggle }) => {
-  const isAlert  = item.mode === EQUIPMENT_MODE.ALERT;
-  const isAuto   = item.mode === EQUIPMENT_MODE.AUTO;
-  const isManual = item.mode === EQUIPMENT_MODE.MANUAL;
-
-  const cardBg     = isAlert ? COLORS.errorContainer : COLORS.surfaceContainer;
-  const iconColor  = isAlert ? COLORS.error : COLORS.primary;
-  const iconBg     = isAlert ? COLORS.error + '18' : COLORS.primary + '18';
-  const titleColor = isAlert ? COLORS.error : COLORS.primary;
-
-  const modeBadgeStyle = isAlert
-    ? styles.badgeAlert
-    : isAuto
-    ? styles.badgeAuto
-    : styles.badgeManual;
-
-  const modeBadgeTextStyle = isAlert
-    ? styles.badgeAlertText
-    : isAuto
-    ? styles.badgeAutoText
-    : styles.badgeManualText;
+  const isAlert = item.mode === 'ALERTE';
+  const isOn    = item.isOn;
 
   return (
     <View style={[
-      styles.equipCard,
-      { backgroundColor: cardBg },
-      isAlert && styles.equipCardAlert,
+      styles.card,
+      isAlert && styles.cardAlert,
     ]}>
-      {/* ── En-tête */}
-      <View style={styles.equipCardHeader}>
-        <View style={[styles.equipIconBox, { backgroundColor: iconBg }]}>
-          <MaterialIcons name={item.icon} size={22} color={iconColor} />
+      {/* Haut : icône + badge mode */}
+      <View style={styles.cardTop}>
+        <View style={[
+          styles.cardIconBox,
+          { backgroundColor: isAlert ? C.error + '18' : C.primary + '18' },
+        ]}>
+          <MaterialIcons
+            name={item.icon}
+            size={24}
+            color={isAlert ? C.error : C.primary}
+          />
         </View>
-        <View style={[modeBadgeStyle]}>
-          <Text style={modeBadgeTextStyle}>{item.mode}</Text>
+        <View style={[
+          styles.modeBadge,
+          isAlert  ? styles.modeBadgeAlert :
+          item.mode === 'AUTO' ? styles.modeBadgeAuto : styles.modeBadgeManual,
+        ]}>
+          <Text style={[
+            styles.modeBadgeText,
+            isAlert  ? styles.modeBadgeTextAlert :
+            item.mode === 'AUTO' ? styles.modeBadgeTextAuto : styles.modeBadgeTextManual,
+          ]}>
+            {item.mode}
+          </Text>
         </View>
       </View>
 
-      {/* ── Nom + Toggle */}
-      <View style={styles.equipCardFooter}>
-        <Text style={[styles.equipName, { color: titleColor }]}>{item.name}</Text>
-        <View style={styles.equipToggleRow}>
+      {/* Bas : nom + toggle */}
+      <View>
+        <Text style={[styles.cardName, isAlert && { color: C.error }]}>
+          {item.name}
+        </Text>
+        <View style={styles.cardToggleRow}>
           <Text style={[
-            styles.equipStatus,
-            { color: item.isOn ? COLORS.statusHealthy : COLORS.onSurfaceVariant },
+            styles.cardStatus,
+            isAlert
+              ? { color: C.error }
+              : isOn
+              ? { color: C.onTertiaryContainer }
+              : { color: C.onSurfaceVariant },
           ]}>
-            {isAlert ? 'FAIL' : item.isOn ? 'ON' : 'OFF'}
+            {isAlert ? 'FAIL/OFF' : isOn ? 'ON' : 'OFF'}
           </Text>
           <Switch
-            value={item.isOn && !isAlert}
+            value={isOn && !isAlert}
             onValueChange={() => !isAlert && onToggle(item.id)}
             trackColor={{
-              false: COLORS.surfaceContainerHigh,
-              true: isAlert ? COLORS.error + '40' : COLORS.primary + '60',
+              false: isAlert ? C.error + '30' : C.surfaceVariant,
+              true:  C.secondary + '80',
             }}
-            thumbColor={COLORS.white}
-            ios_backgroundColor={COLORS.surfaceContainerHigh}
+            thumbColor={C.white}
+            ios_backgroundColor={C.surfaceVariant}
             disabled={isAlert}
+            style={styles.switch}
           />
         </View>
       </View>
@@ -92,73 +116,77 @@ const EquipmentCard = ({ item, onToggle }) => {
 };
 
 // ─────────────────────────────────────────
-// 🧩 FILTER PILL
-// ─────────────────────────────────────────
-const FilterPill = ({ label, active, onPress }) => (
-  <TouchableOpacity
-    style={[styles.filterPill, active && styles.filterPillActive]}
-    onPress={onPress}
-    activeOpacity={0.8}
-  >
-    <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
-
-// ─────────────────────────────────────────
 // 📱 EQUIPMENT SCREEN
 // ─────────────────────────────────────────
 const EquipmentScreen = ({ navigation }) => {
-  const equipment        = useAppStore((s) => s.equipment);
-  const equipmentFilter  = useAppStore((s) => s.equipmentFilter);
-  const unreadCount      = useAppStore((s) => s.unreadAlertsCount);
-  const { toggleEquipment, setEquipmentFilter } = useAppStore();
+  const user        = useAppStore((s) => s.user);
+  const unreadCount = useAppStore((s) => s.unreadAlertsCount);
+  const selectedCoop = useAppStore((s) => s.selectedCoop);
 
-  const [selectedCoop, setSelectedCoop] = useState('POULAILLER 2');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [equipment, setEquipment] = useState([
+    { id: '1', name: 'Ventilateurs', icon: 'air',        mode: 'AUTO',   isOn: true  },
+    { id: '2', name: 'Pad Cooling',  icon: 'ac-unit',    mode: 'MANUEL', isOn: false },
+    { id: '3', name: 'Éclairage',    icon: 'lightbulb',  mode: 'AUTO',   isOn: true  },
+    { id: '4', name: 'Stores',       icon: 'blinds',     mode: 'MANUEL', isOn: true  },
+    { id: '5', name: 'Chauffage',    icon: 'thermostat',  mode: 'ALERTE', isOn: false },
+    { id: '6', name: 'Abreuvoirs',   icon: 'water-drop', mode: 'AUTO',   isOn: true  },
+  ]);
 
-  // ── Filtrage
+  const handleToggle = (id) => {
+    setEquipment((prev) =>
+      prev.map((eq) => eq.id === id ? { ...eq, isOn: !eq.isOn } : eq)
+    );
+  };
+
   const filteredEquipment = equipment.filter((eq) => {
-    if (equipmentFilter === 'active') return eq.isOn;
-    if (equipmentFilter === 'alert')  return eq.mode === EQUIPMENT_MODE.ALERT;
+    if (activeFilter === 'active') return eq.isOn && eq.mode !== 'ALERTE';
+    if (activeFilter === 'alert')  return eq.mode === 'ALERTE';
     return true;
   });
 
-  const filterItems = [
+  const filters = [
     { key: 'all',    label: 'Tous' },
     { key: 'active', label: 'Actifs' },
     { key: 'alert',  label: 'En alerte' },
   ];
 
   // ─────────────────────────────────────────
-  // 🎨 RENDER
-  // ─────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
 
-      {/* ── Top App Bar */}
+      {/* ══ TOP APP BAR ══ */}
       <View style={styles.topBar}>
+        {/* Dropdown coop */}
         <TouchableOpacity style={styles.coopDropdown} activeOpacity={0.8}>
-          <Text style={styles.coopDropdownText}>{selectedCoop}</Text>
-          <MaterialIcons name="expand-more" size={18} color={COLORS.emerald400} />
+          <Text style={styles.coopDropdownText}>
+            {selectedCoop?.name?.toUpperCase() || 'POULAILLER 2'}
+          </Text>
+          <MaterialIcons name="expand-more" size={20} color={C.emerald400} />
         </TouchableOpacity>
+
         <View style={styles.topBarRight}>
+          {/* Notifications */}
           <TouchableOpacity
             style={styles.notifBtn}
-            onPress={() => navigation.navigate('Alerts')}
+            onPress={() => navigation.getParent()?.navigate('AlertsTab')}
             activeOpacity={0.8}
           >
-            <MaterialIcons name="notifications" size={24} color={COLORS.emerald400} />
-            {unreadCount > 0 && (
-              <View style={styles.notifBadge}>
-                <Text style={styles.notifBadgeText}>
-                  {unreadCount > 9 ? '9+' : unreadCount}
+            <MaterialIcons name="notifications" size={24} color={C.emerald400} />
+            {unreadCount > 0 && <View style={styles.notifDot} />}
+          </TouchableOpacity>
+
+          {/* Avatar */}
+          <View style={styles.avatarWrapper}>
+            {user?.avatar ? (
+              <Image source={{ uri: user.avatar }} style={styles.avatar} />
+            ) : (
+              <View style={[styles.avatar, styles.avatarFallback]}>
+                <Text style={styles.avatarInitials}>
+                  {user?.name?.charAt(0) || 'U'}
                 </Text>
               </View>
             )}
-          </TouchableOpacity>
-          <View style={styles.avatarSmall}>
-            <MaterialIcons name="person" size={18} color={COLORS.emerald400} />
           </View>
         </View>
       </View>
@@ -168,7 +196,7 @@ const EquipmentScreen = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Titre */}
+        {/* ══ TITRE ══ */}
         <View style={styles.titleSection}>
           <Text style={styles.screenTitle}>Équipements</Text>
           <Text style={styles.screenSubtitle}>
@@ -176,98 +204,98 @@ const EquipmentScreen = ({ navigation }) => {
           </Text>
         </View>
 
-        {/* ── Filtres */}
+        {/* ══ FILTRES ══ */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filtersRow}
         >
-          {filterItems.map((f) => (
-            <FilterPill
+          {filters.map((f) => (
+            <TouchableOpacity
               key={f.key}
-              label={f.label}
-              active={equipmentFilter === f.key}
-              onPress={() => setEquipmentFilter(f.key)}
-            />
+              style={[
+                styles.filterPill,
+                activeFilter === f.key && styles.filterPillActive,
+              ]}
+              onPress={() => setActiveFilter(f.key)}
+              activeOpacity={0.8}
+            >
+              <Text style={[
+                styles.filterPillText,
+                activeFilter === f.key && styles.filterPillTextActive,
+              ]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {/* ── Grille équipements 2 colonnes */}
-        {filteredEquipment.length === 0 ? (
-          <View style={styles.emptyState}>
-            <MaterialIcons name="devices-other" size={48} color={COLORS.outlineVariant} />
-            <Text style={styles.emptyText}>Aucun équipement dans cette catégorie</Text>
-          </View>
-        ) : (
-          <View style={styles.equipGrid}>
-            {filteredEquipment.map((eq) => (
-              <View key={eq.id} style={styles.equipGridItem}>
-                <EquipmentCard item={eq} onToggle={toggleEquipment} />
-              </View>
-            ))}
-          </View>
-        )}
+        {/* ══ GRILLE ÉQUIPEMENTS 2 COLONNES ══ */}
+        <View style={styles.grid}>
+          {filteredEquipment.map((eq) => (
+            <View key={eq.id} style={styles.gridItem}>
+              <EquipmentCard item={eq} onToggle={handleToggle} />
+            </View>
+          ))}
+        </View>
 
-        {/* ── Grande carte Distributeurs */}
+        {/* ══ GRANDE CARTE DISTRIBUTEURS ══ */}
         <LinearGradient
-          colors={GRADIENTS.primary}
+          colors={[C.primary, C.primaryLight]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.distributorCard}
         >
-          {/* Décoration fond */}
+          {/* Décoration blur */}
           <View style={styles.distributorDeco} />
 
+          {/* Top : infos + badge */}
           <View style={styles.distributorTop}>
             <View>
               <View style={styles.distributorIconBox}>
-                <MaterialIcons name="restaurant" size={22} color={COLORS.emerald400} />
+                <MaterialIcons name="restaurant" size={24} color={C.primaryFixedDim} />
               </View>
               <Text style={styles.distributorTitle}>Distributeurs</Text>
               <Text style={styles.distributorSubtitle}>
                 Prochain cycle :{' '}
-                <Text style={styles.distributorTime}>
-                  {MOCK_DISTRIBUTORS.nextCycle}
-                </Text>
+                <Text style={styles.distributorTime}>14h30</Text>
               </Text>
             </View>
-            <View style={styles.distributorBadgeAuto}>
-              <Text style={styles.distributorBadgeAutoText}>
-                {MOCK_DISTRIBUTORS.mode}
-              </Text>
+            <View style={styles.distributorBadge}>
+              <Text style={styles.distributorBadgeText}>AUTO</Text>
             </View>
           </View>
 
+          {/* Bottom : avatars D1/D2/D3/+2 + bouton ACTIVER */}
           <View style={styles.distributorBottom}>
-            {/* Avatars D1 D2 D3 +2 */}
             <View style={styles.distributorAvatars}>
-              {MOCK_DISTRIBUTORS.units.map((u, index) => (
+              {['D1', 'D2', 'D3'].map((label, i) => (
                 <View
-                  key={u.id}
+                  key={label}
                   style={[
                     styles.distributorAvatar,
-                    { marginLeft: index === 0 ? 0 : -10 },
-                    u.active
-                      ? styles.distributorAvatarActive
-                      : styles.distributorAvatarExtra,
+                    styles.distributorAvatarGreen,
+                    { marginLeft: i === 0 ? 0 : -8 },
                   ]}
                 >
-                  <Text style={styles.distributorAvatarText}>{u.label}</Text>
+                  <Text style={styles.distributorAvatarText}>{label}</Text>
                 </View>
               ))}
+              <View style={[
+                styles.distributorAvatar,
+                styles.distributorAvatarOrange,
+                { marginLeft: -8 },
+              ]}>
+                <Text style={styles.distributorAvatarText}>+2</Text>
+              </View>
             </View>
 
-            {/* Bouton Activer */}
-            <TouchableOpacity
-              style={styles.activateBtn}
-              activeOpacity={0.85}
-            >
+            <TouchableOpacity style={styles.activateBtn} activeOpacity={0.85}>
               <Text style={styles.activateBtnText}>ACTIVER</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
 
-        {/* Espace bottom nav */}
         <View style={{ height: LAYOUT.bottomNavHeight + SPACING['2xl'] }} />
       </ScrollView>
     </SafeAreaView>
@@ -278,342 +306,318 @@ const EquipmentScreen = ({ navigation }) => {
 // 🎨 STYLES
 // ─────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: COLORS.surface,
-  },
+  safe: { flex: 1, backgroundColor: '#F8F9FA' },
 
   // ── Top Bar
   topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: COLORS.primaryContainer,
+    flexDirection:    'row',
+    justifyContent:   'space-between',
+    alignItems:       'center',
+    backgroundColor:  C.primaryContainer,
     paddingHorizontal: SPACING['2xl'],
-    paddingVertical: SPACING.lg,
-    height: LAYOUT.topBarHeight,
+    paddingVertical:   SPACING.lg,
+    height:            LAYOUT.topBarHeight,
   },
   coopDropdown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: COLORS.primary + '60',
+    flexDirection:   'row',
+    alignItems:      'center',
+    gap:             SPACING.sm,
+    backgroundColor: C.primary + '60',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.full,
+    paddingVertical:   SPACING.sm,
+    borderRadius:    RADIUS.full,
   },
   coopDropdownText: {
-    fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.white,
+    fontFamily:  FONTS.inter,
+    fontSize:    FONT_SIZES.sm,
+    fontWeight:  FONT_WEIGHTS.bold,
+    color:       C.white,
     letterSpacing: 0.5,
   },
   topBarRight: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.lg,
+    alignItems:    'center',
+    gap:           SPACING.lg,
   },
-  notifBtn: {
-    position: 'relative',
-    padding: SPACING.xs,
+  notifBtn: { position: 'relative', padding: SPACING.xs },
+  notifDot: {
+    position:        'absolute',
+    top:             2, right: 2,
+    width:           8, height: 8,
+    borderRadius:    4,
+    backgroundColor: C.secondary,
+    borderWidth:     1.5,
+    borderColor:     C.primaryContainer,
   },
-  notifBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    backgroundColor: COLORS.error,
-    borderRadius: RADIUS.full,
-    minWidth: 16,
-    height: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-    borderWidth: 1.5,
-    borderColor: COLORS.primaryContainer,
+  avatarWrapper: {
+    width:        40, height: 40,
+    borderRadius: 20,
+    overflow:     'hidden',
+    borderWidth:  2,
+    borderColor:  C.primaryContainer,
   },
-  notifBadgeText: {
-    fontSize: 9,
+  avatar: { width: '100%', height: '100%' },
+  avatarFallback: {
+    backgroundColor: C.primaryLight,
+    alignItems:      'center',
+    justifyContent:  'center',
+  },
+  avatarInitials: {
+    fontFamily: FONTS.manrope,
+    fontSize:   FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.white,
-  },
-  avatarSmall: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.primaryContainer,
+    color:      C.white,
   },
 
   // ── Scroll
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: SPACING['2xl'],
-    paddingTop: SPACING['2xl'],
-    gap: SPACING.xl,
+    paddingTop:        SPACING['2xl'],
+    gap:               SPACING.xl,
   },
 
   // ── Titre
   titleSection: { gap: 4 },
   screenTitle: {
-    fontFamily: FONTS.manrope,
-    fontSize: FONT_SIZES['3xl'],
-    fontWeight: FONT_WEIGHTS.extraBold,
-    color: COLORS.primary,
+    fontFamily:  FONTS.manrope,
+    fontSize:    FONT_SIZES['3xl'],
+    fontWeight:  FONT_WEIGHTS.extraBold,
+    color:       C.primary,
     letterSpacing: -0.5,
   },
   screenSubtitle: {
     fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.onSurfaceVariant,
+    fontSize:   FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.medium,
-    opacity: 0.8,
+    color:      C.onSurfaceVariant,
+    opacity:    0.8,
   },
 
   // ── Filtres
   filtersRow: {
-    gap: SPACING.md,
+    gap:         SPACING.md,
     paddingRight: SPACING['2xl'],
   },
   filterPill: {
     paddingHorizontal: SPACING['2xl'],
-    paddingVertical: SPACING.sm + 2,
-    backgroundColor: COLORS.surfaceContainerHigh,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    paddingVertical:   SPACING.sm + 2,
+    backgroundColor:   C.surfaceContainerHigh,
+    borderRadius:      RADIUS.full,
+    borderWidth:       1,
+    borderColor:       'transparent',
   },
   filterPillActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: C.primary,
+    borderColor:     C.primary,
   },
   filterPillText: {
     fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.sm,
+    fontSize:   FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semiBold,
-    color: COLORS.onSurfaceVariant,
+    color:      C.onSurfaceVariant,
   },
   filterPillTextActive: {
-    color: COLORS.white,
+    color:      C.white,
+    fontWeight: FONT_WEIGHTS.bold,
   },
 
-  // ── Grille équipements
-  equipGrid: {
+  // ── Grille 2 colonnes
+  grid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.lg,
+    flexWrap:      'wrap',
+    gap:           SPACING.lg,
   },
-  equipGridItem: {
-    width: '47%',
+  gridItem: {
+    width: '47.5%',
   },
-  equipCard: {
-    borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    height: 160,
-    justifyContent: 'space-between',
+
+  // ── Equipment Card
+  card: {
+    backgroundColor: C.surfaceContainerLow,
+    borderRadius:    20,
+    padding:         SPACING.xl,
+    height:          176,
+    justifyContent:  'space-between',
     ...SHADOWS.sm,
   },
-  equipCardAlert: {
-    borderWidth: 1.5,
-    borderColor: COLORS.error + '30',
+  cardAlert: {
+    backgroundColor: C.errorContainer,
+    borderWidth:     1.5,
+    borderColor:     C.error + '30',
   },
-  equipCardHeader: {
-    flexDirection: 'row',
+  cardTop: {
+    flexDirection:  'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems:     'flex-start',
   },
-  equipIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
+  cardIconBox: {
+    padding:      SPACING.sm,
+    borderRadius: RADIUS.lg,
   },
 
   // Badges mode
-  badgeAuto: {
-    backgroundColor: COLORS.primary + '20',
+  modeBadge: {
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
+    paddingVertical:   3,
+    borderRadius:      RADIUS.full,
   },
-  badgeAutoText: {
+  modeBadgeAuto: {
+    backgroundColor: C.primaryContainer,
+  },
+  modeBadgeManual: {
+    backgroundColor: C.surfaceVariant,
+  },
+  modeBadgeAlert: {
+    backgroundColor: C.error,
+  },
+  modeBadgeText: {
     fontFamily: FONTS.inter,
-    fontSize: 9,
+    fontSize:   9,
     fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.primary,
     letterSpacing: 0.5,
   },
-  badgeManual: {
-    backgroundColor: COLORS.surfaceContainerHigh,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
+  modeBadgeTextAuto: {
+    color: C.primaryFixedDim,
   },
-  badgeManualText: {
-    fontFamily: FONTS.inter,
-    fontSize: 9,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.onSurfaceVariant,
-    letterSpacing: 0.5,
+  modeBadgeTextManual: {
+    color: C.onSurfaceVariant,
   },
-  badgeAlert: {
-    backgroundColor: COLORS.error,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 3,
-    borderRadius: RADIUS.full,
-  },
-  badgeAlertText: {
-    fontFamily: FONTS.inter,
-    fontSize: 9,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.white,
-    letterSpacing: 0.5,
+  modeBadgeTextAlert: {
+    color: C.white,
   },
 
-  // Footer carte
-  equipCardFooter: { gap: 6 },
-  equipName: {
-    fontFamily: FONTS.manrope,
-    fontSize: FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.bold,
+  // Nom + toggle
+  cardName: {
+    fontFamily:  FONTS.manrope,
+    fontSize:    FONT_SIZES.lg,
+    fontWeight:  FONT_WEIGHTS.bold,
+    color:       C.primary,
+    marginBottom: SPACING.md,
   },
-  equipToggleRow: {
-    flexDirection: 'row',
+  cardToggleRow: {
+    flexDirection:  'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems:     'center',
   },
-  equipStatus: {
+  cardStatus: {
     fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.sm,
+    fontSize:   FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.semiBold,
   },
-
-  // ── Empty state
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: SPACING['4xl'],
-    gap: SPACING.md,
-  },
-  emptyText: {
-    fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.onSurfaceVariant,
-    textAlign: 'center',
+  switch: {
+    transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
   },
 
   // ── Distributeur Card
   distributorCard: {
-    borderRadius: RADIUS['3xl'],
-    padding: SPACING['2xl'],
-    height: 200,
-    justifyContent: 'space-between',
-    overflow: 'hidden',
-    ...SHADOWS.lg,
+    borderRadius:  32,
+    padding:       SPACING['2xl'],
+    height:        210,
+    justifyContent:'space-between',
+    overflow:      'hidden',
+    ...SHADOWS.xl,
   },
   distributorDeco: {
-    position: 'absolute',
-    top: -40,
-    right: -40,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: COLORS.secondary + '18',
+    position:        'absolute',
+    top:             -48, right: -64,
+    width:           192, height: 192,
+    borderRadius:    96,
+    backgroundColor: C.secondary + '18',
   },
   distributorTop: {
-    flexDirection: 'row',
+    flexDirection:  'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    zIndex: 1,
+    alignItems:     'flex-start',
+    zIndex:         1,
   },
   distributorIconBox: {
-    backgroundColor: COLORS.secondary + '30',
-    padding: SPACING.md,
-    borderRadius: RADIUS.xl,
-    alignSelf: 'flex-start',
-    marginBottom: SPACING.md,
+    backgroundColor: C.secondary + '30',
+    padding:         SPACING.md,
+    borderRadius:    RADIUS.xl,
+    alignSelf:       'flex-start',
+    marginBottom:    SPACING.md,
   },
   distributorTitle: {
-    fontFamily: FONTS.manrope,
-    fontSize: FONT_SIZES['2xl'],
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.white,
+    fontFamily:  FONTS.manrope,
+    fontSize:    FONT_SIZES['2xl'],
+    fontWeight:  FONT_WEIGHTS.bold,
+    color:       C.white,
     letterSpacing: -0.3,
   },
   distributorSubtitle: {
     fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.white60,
+    fontSize:   FONT_SIZES.sm,
+    color:      C.primaryFixedDim,
     fontWeight: FONT_WEIGHTS.medium,
-    marginTop: 2,
+    marginTop:  2,
   },
   distributorTime: {
     fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.white,
+    color:      C.white,
   },
-  distributorBadgeAuto: {
-    backgroundColor: COLORS.primaryContainer,
+  distributorBadge: {
+    backgroundColor: C.primaryContainer,
     paddingHorizontal: SPACING.md,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.emerald400 + '40',
+    paddingVertical:   SPACING.sm,
+    borderRadius:      RADIUS.full,
+    borderWidth:       1,
+    borderColor:       C.emerald400 + '35',
   },
-  distributorBadgeAutoText: {
-    fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.extraBold,
-    color: COLORS.emerald400,
-    letterSpacing: 1.5,
+  distributorBadgeText: {
+    fontFamily:  FONTS.inter,
+    fontSize:    FONT_SIZES.xs,
+    fontWeight:  FONT_WEIGHTS.extraBold,
+    color:       C.emerald400,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
   },
-
-  // Bas de la carte
   distributorBottom: {
-    flexDirection: 'row',
+    flexDirection:  'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    zIndex: 1,
+    alignItems:     'center',
+    zIndex:         1,
   },
   distributorAvatars: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems:    'center',
   },
   distributorAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
+    width:          32, height: 32,
+    borderRadius:   16,
+    alignItems:     'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.primary,
+    borderWidth:    2,
+    borderColor:    C.primary,
   },
-  distributorAvatarActive: {
-    backgroundColor: COLORS.emerald800,
+  distributorAvatarGreen: {
+    backgroundColor: C.emerald800,
   },
-  distributorAvatarExtra: {
-    backgroundColor: COLORS.secondary,
+  distributorAvatarOrange: {
+    backgroundColor: C.secondary,
   },
   distributorAvatarText: {
     fontFamily: FONTS.inter,
-    fontSize: 9,
+    fontSize:   9,
     fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.white,
+    color:      C.white,
   },
   activateBtn: {
-    backgroundColor: COLORS.secondary,
+    backgroundColor:   C.secondary,
     paddingHorizontal: SPACING['3xl'],
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.xl,
-    ...SHADOWS.secondary,
+    paddingVertical:   SPACING.md,
+    borderRadius:      RADIUS.xl,
+    shadowColor:       C.secondary,
+    shadowOffset:      { width: 0, height: 6 },
+    shadowOpacity:     0.3,
+    shadowRadius:      12,
+    elevation:         8,
   },
   activateBtnText: {
-    fontFamily: FONTS.manrope,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.white,
+    fontFamily:  FONTS.manrope,
+    fontSize:    FONT_SIZES.sm,
+    fontWeight:  FONT_WEIGHTS.bold,
+    color:       C.white,
     letterSpacing: 1,
   },
 });

@@ -173,7 +173,6 @@ const HomeScreen = ({ navigation }) => {
         {/* ── Label ferme */}
         <View style={styles.farmHeader}>
           <View>
-            <Text style={styles.farmLabel}>Estate Dashboard</Text>
             <Text style={styles.farmName}>{farm?.name || 'PoulIA Green Farm'}</Text>
           </View>
           {/* Badge santé du coop */}
