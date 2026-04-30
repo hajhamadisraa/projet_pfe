@@ -1,5 +1,6 @@
-import { Stack } from 'expo-router';
+// app/_layout.tsx
+import AppNavigator from '../src/navigation/AppNavigator';
 
 export default function RootLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <AppNavigator />;
 }

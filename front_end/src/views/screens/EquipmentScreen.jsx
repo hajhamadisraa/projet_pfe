@@ -1,192 +1,140 @@
 // src/views/screens/EquipmentScreen.jsx
 import { MaterialIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import React, { useState } from 'react';
 import {
-  Image,
   ScrollView,
-  StyleSheet, Switch,
+  StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import useAppStore from '../../controllers/context/AppStore';
 import {
-  FONTS, FONT_SIZES, FONT_WEIGHTS,
-  LAYOUT,
-  RADIUS, SHADOWS,
-  SPACING
+  COLORS,
+  FONTS,
+  FONT_SIZES,
+  FONT_WEIGHTS,
+  RADIUS,
+  SHADOWS,
+  SPACING,
 } from '../../models/utils/constants';
 
 // ─────────────────────────────────────────
-// 🎨 DESIGN TOKENS (fidèles au HTML)
+// 🧩 MODE TOGGLE
 // ─────────────────────────────────────────
-const C = {
-  primaryContainer: '#0A3D27',  // bg-primary-container
-  primary:          '#012D1D',  // bg-primary
-  primaryLight:     '#1B4332',
-  secondary:        '#FE6A34',  // bg-secondary (orange)
-  error:            '#B3261E',
-  errorContainer:   '#F9DEDC',
-  surfaceContainerLow: '#FFFFFF',
-  surfaceContainerHigh:'#E8EAEB',
-  surfaceVariant:   '#E1E3E4',
-  onSurfaceVariant: '#44474F',
-  emerald400:       '#34D399',
-  emerald800:       '#065F46',
-  emerald50:        '#ECFDF5',
-  white:            '#FFFFFF',
-  primaryFixed:     '#C8E6C9',
-  primaryFixedDim:  '#A5D6A7',
-  onTertiaryContainer: '#1B5E20',
-};
+const ModeToggle = ({ mode, onToggle, color = COLORS.primary }) => (
+  <View style={styles.modeToggleWrapper}>
+    <TouchableOpacity
+      style={[styles.modeBtn, mode === 'auto' && { backgroundColor: COLORS.white }]}
+      onPress={() => onToggle('auto')}
+      activeOpacity={0.8}
+    >
+      <Text style={[styles.modeBtnText, mode === 'auto' && { color }]}>
+         AUTO
+      </Text>
+    </TouchableOpacity>
+    <TouchableOpacity
+      style={[styles.modeBtn, mode === 'manuel' && { backgroundColor: COLORS.white }]}
+      onPress={() => onToggle('manuel')}
+      activeOpacity={0.8}
+    >
+      <Text style={[styles.modeBtnText, mode === 'manuel' && { color }]}>
+        MANUEL
+      </Text>
+    </TouchableOpacity>
+  </View>
+);
 
 // ─────────────────────────────────────────
 // 🧩 EQUIPMENT CARD
 // ─────────────────────────────────────────
-const EquipmentCard = ({ item, onToggle }) => {
-  const isAlert = item.mode === 'ALERTE';
-  const isOn    = item.isOn;
-
-  return (
-    <View style={[
-      styles.card,
-      isAlert && styles.cardAlert,
-    ]}>
-      {/* Haut : icône + badge mode */}
-      <View style={styles.cardTop}>
-        <View style={[
-          styles.cardIconBox,
-          { backgroundColor: isAlert ? C.error + '18' : C.primary + '18' },
-        ]}>
-          <MaterialIcons
-            name={item.icon}
-            size={24}
-            color={isAlert ? C.error : C.primary}
-          />
+const EquipmentCard = ({
+  icon,
+  title,
+  statusDot,
+  statusText,
+  statusColor,
+  mode,
+  onModeToggle,
+  footerContent,
+  isManualOverride,
+  iconColor,
+  iconBg,
+}) => (
+  <View style={[
+    styles.card,
+    isManualOverride && {
+      borderLeftWidth: 4,
+      borderLeftColor: COLORS.secondary,
+      borderWidth: 0,
+    },
+  ]}>
+    {/* Header */}
+    <View style={styles.cardHeader}>
+      <View style={styles.cardHeaderLeft}>
+        <View style={[styles.iconWrapper, { backgroundColor: iconBg || COLORS.surfaceContainer }]}>
+          <MaterialIcons name={icon} size={24} color={iconColor || COLORS.primary} />
         </View>
-        <View style={[
-          styles.modeBadge,
-          isAlert  ? styles.modeBadgeAlert :
-          item.mode === 'AUTO' ? styles.modeBadgeAuto : styles.modeBadgeManual,
-        ]}>
-          <Text style={[
-            styles.modeBadgeText,
-            isAlert  ? styles.modeBadgeTextAlert :
-            item.mode === 'AUTO' ? styles.modeBadgeTextAuto : styles.modeBadgeTextManual,
-          ]}>
-            {item.mode}
-          </Text>
-        </View>
-      </View>
-
-      {/* Bas : nom + toggle */}
-      <View>
-        <Text style={[styles.cardName, isAlert && { color: C.error }]}>
-          {item.name}
-        </Text>
-        <View style={styles.cardToggleRow}>
-          <Text style={[
-            styles.cardStatus,
-            isAlert
-              ? { color: C.error }
-              : isOn
-              ? { color: C.onTertiaryContainer }
-              : { color: C.onSurfaceVariant },
-          ]}>
-            {isAlert ? 'FAIL/OFF' : isOn ? 'ON' : 'OFF'}
-          </Text>
-          <Switch
-            value={isOn && !isAlert}
-            onValueChange={() => !isAlert && onToggle(item.id)}
-            trackColor={{
-              false: isAlert ? C.error + '30' : C.surfaceVariant,
-              true:  C.secondary + '80',
-            }}
-            thumbColor={C.white}
-            ios_backgroundColor={C.surfaceVariant}
-            disabled={isAlert}
-            style={styles.switch}
-          />
+        <View>
+          <Text style={styles.cardTitle}>{title}</Text>
+          <View style={styles.statusRow}>
+            <View style={[styles.statusDot, { backgroundColor: statusDot }]} />
+            <Text style={[styles.statusText, { color: statusColor || COLORS.onSurfaceVariant }]}>
+              {statusText}
+            </Text>
+          </View>
         </View>
       </View>
+      <ModeToggle
+        mode={mode}
+        onToggle={onModeToggle}
+        color={isManualOverride ? COLORS.secondary : COLORS.primary}
+      />
     </View>
-  );
-};
+
+    {/* Footer */}
+    <View style={styles.cardFooter}>
+      {footerContent}
+    </View>
+  </View>
+);
 
 // ─────────────────────────────────────────
 // 📱 EQUIPMENT SCREEN
 // ─────────────────────────────────────────
 const EquipmentScreen = ({ navigation }) => {
-  const user        = useAppStore((s) => s.user);
-  const unreadCount = useAppStore((s) => s.unreadAlertsCount);
-  const selectedCoop = useAppStore((s) => s.selectedCoop);
-
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [equipment, setEquipment] = useState([
-    { id: '1', name: 'Ventilateurs', icon: 'air',        mode: 'AUTO',   isOn: true  },
-    { id: '2', name: 'Pad Cooling',  icon: 'ac-unit',    mode: 'MANUEL', isOn: false },
-    { id: '3', name: 'Éclairage',    icon: 'lightbulb',  mode: 'AUTO',   isOn: true  },
-    { id: '4', name: 'Stores',       icon: 'blinds',     mode: 'MANUEL', isOn: true  },
-    { id: '5', name: 'Chauffage',    icon: 'thermostat',  mode: 'ALERTE', isOn: false },
-    { id: '6', name: 'Abreuvoirs',   icon: 'water-drop', mode: 'AUTO',   isOn: true  },
-  ]);
-
-  const handleToggle = (id) => {
-    setEquipment((prev) =>
-      prev.map((eq) => eq.id === id ? { ...eq, isOn: !eq.isOn } : eq)
-    );
-  };
-
-  const filteredEquipment = equipment.filter((eq) => {
-    if (activeFilter === 'active') return eq.isOn && eq.mode !== 'ALERTE';
-    if (activeFilter === 'alert')  return eq.mode === 'ALERTE';
-    return true;
+  const [modes, setModes] = useState({
+    ventilateurs: 'auto',
+    padCooling:   'auto',
+    eclairage:    'manuel',
+    stores:       'auto',
+    chauffage:    'auto',
+    abreuvoirs:   'auto',
   });
 
-  const filters = [
-    { key: 'all',    label: 'Tous' },
-    { key: 'active', label: 'Actifs' },
-    { key: 'alert',  label: 'En alerte' },
-  ];
+  const toggleMode = (key) => (value) => {
+    setModes((prev) => ({ ...prev, [key]: value }));
+  };
 
-  // ─────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
 
-      {/* ══ TOP APP BAR ══ */}
+      {/* ── Top App Bar */}
       <View style={styles.topBar}>
-        {/* Dropdown coop */}
-        <TouchableOpacity style={styles.coopDropdown} activeOpacity={0.8}>
-          <Text style={styles.coopDropdownText}>
-            {selectedCoop?.name?.toUpperCase() || 'POULAILLER 2'}
-          </Text>
-          <MaterialIcons name="expand-more" size={20} color={C.emerald400} />
-        </TouchableOpacity>
-
-        <View style={styles.topBarRight}>
-          {/* Notifications */}
-          <TouchableOpacity
-            style={styles.notifBtn}
-            onPress={() => navigation.getParent()?.navigate('AlertsTab')}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="notifications" size={24} color={C.emerald400} />
-            {unreadCount > 0 && <View style={styles.notifDot} />}
+        <View style={styles.topBarLeft}>
+          <TouchableOpacity activeOpacity={0.8}>
+            <MaterialIcons name="menu" size={24} color={COLORS.primary} />
           </TouchableOpacity>
-
-          {/* Avatar */}
+          <Text style={styles.topBarTitle}>Bâtiment A01</Text>
+        </View>
+        <View style={styles.topBarRight}>
+          <TouchableOpacity style={styles.topBarIcon} activeOpacity={0.8}>
+            <MaterialIcons name="notifications" size={24} color={COLORS.primary} />
+          </TouchableOpacity>
           <View style={styles.avatarWrapper}>
-            {user?.avatar ? (
-              <Image source={{ uri: user.avatar }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarFallback]}>
-                <Text style={styles.avatarInitials}>
-                  {user?.name?.charAt(0) || 'U'}
-                </Text>
-              </View>
-            )}
+            <View style={styles.avatarFallback}>
+              <MaterialIcons name="person" size={18} color={COLORS.white} />
+            </View>
           </View>
         </View>
       </View>
@@ -196,107 +144,132 @@ const EquipmentScreen = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ══ TITRE ══ */}
+        {/* ── Titre */}
         <View style={styles.titleSection}>
-          <Text style={styles.screenTitle}>Équipements</Text>
-          <Text style={styles.screenSubtitle}>
-            Contrôle en temps réel et automatisation
-          </Text>
+          <Text style={styles.sectionLabel}>Contrôle des Systèmes</Text>
+          <Text style={styles.screenTitle}>Gestion Équipements</Text>
         </View>
 
-        {/* ══ FILTRES ══ */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersRow}
-        >
-          {filters.map((f) => (
-            <TouchableOpacity
-              key={f.key}
-              style={[
-                styles.filterPill,
-                activeFilter === f.key && styles.filterPillActive,
-              ]}
-              onPress={() => setActiveFilter(f.key)}
-              activeOpacity={0.8}
-            >
-              <Text style={[
-                styles.filterPillText,
-                activeFilter === f.key && styles.filterPillTextActive,
-              ]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* ══ GRILLE ÉQUIPEMENTS 2 COLONNES ══ */}
-        <View style={styles.grid}>
-          {filteredEquipment.map((eq) => (
-            <View key={eq.id} style={styles.gridItem}>
-              <EquipmentCard item={eq} onToggle={handleToggle} />
+        {/* ── Bannière IA */}
+        <View style={styles.iaBanner}>
+          <View style={styles.iaBannerContent}>
+            <View style={styles.iaBannerTag}>
+              <MaterialIcons name="smart-toy" size={16} color={COLORS.statusHealthy} />
+              <Text style={styles.iaBannerTagText}>IA Agronome Active</Text>
             </View>
-          ))}
+            <Text style={styles.iaBannerTitle}>Optimisation Climatique</Text>
+            <Text style={styles.iaBannerSubtitle}>
+              Le système maintient 24°C. Humidité stable à 62%.
+            </Text>
+          </View>
+          <View style={styles.iaBannerDeco} />
         </View>
 
-        {/* ══ GRANDE CARTE DISTRIBUTEURS ══ */}
-        <LinearGradient
-          colors={[C.primary, C.primaryLight]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.distributorCard}
-        >
-          {/* Décoration blur */}
-          <View style={styles.distributorDeco} />
+        {/* ── Cards équipements */}
 
-          {/* Top : infos + badge */}
-          <View style={styles.distributorTop}>
-            <View>
-              <View style={styles.distributorIconBox}>
-                <MaterialIcons name="restaurant" size={24} color={C.primaryFixedDim} />
-              </View>
-              <Text style={styles.distributorTitle}>Distributeurs</Text>
-              <Text style={styles.distributorSubtitle}>
-                Prochain cycle :{' '}
-                <Text style={styles.distributorTime}>14h30</Text>
-              </Text>
+        {/* Ventilateurs */}
+        <EquipmentCard
+          icon="air"
+          title="Ventilateurs"
+          statusDot={COLORS.statusHealthy}
+          statusText="8 Unités Actives"
+          mode={modes.ventilateurs}
+          onModeToggle={toggleMode('ventilateurs')}
+          footerContent={
+            <View style={styles.footerCenter}>
+              <View style={styles.activeIndicator} />
+              <Text style={styles.activeText}>EN COURS...</Text>
             </View>
-            <View style={styles.distributorBadge}>
-              <Text style={styles.distributorBadgeText}>AUTO</Text>
+          }
+        />
+
+        {/* Pad Cooling */}
+        <EquipmentCard
+          icon="ac-unit"
+          title="Pad Cooling"
+          statusDot={COLORS.outlineVariant}
+          statusText="Veille thermique"
+          mode={modes.padCooling}
+          onModeToggle={toggleMode('padCooling')}
+          footerContent={
+            <View style={styles.footerCenter}>
+              <Text style={styles.inactiveText}>EN ATTENTE</Text>
             </View>
-          </View>
+          }
+        />
 
-          {/* Bottom : avatars D1/D2/D3/+2 + bouton ACTIVER */}
-          <View style={styles.distributorBottom}>
-            <View style={styles.distributorAvatars}>
-              {['D1', 'D2', 'D3'].map((label, i) => (
-                <View
-                  key={label}
-                  style={[
-                    styles.distributorAvatar,
-                    styles.distributorAvatarGreen,
-                    { marginLeft: i === 0 ? 0 : -8 },
-                  ]}
-                >
-                  <Text style={styles.distributorAvatarText}>{label}</Text>
-                </View>
-              ))}
-              <View style={[
-                styles.distributorAvatar,
-                styles.distributorAvatarOrange,
-                { marginLeft: -8 },
-              ]}>
-                <Text style={styles.distributorAvatarText}>+2</Text>
-              </View>
+        {/* Éclairage — override manuel */}
+        <EquipmentCard
+          icon="lightbulb"
+          title="Éclairage"
+          statusDot={COLORS.secondary}
+          statusText="Override Manuel"
+          statusColor={COLORS.secondary}
+          mode={modes.eclairage}
+          onModeToggle={toggleMode('eclairage')}
+          isManualOverride
+          iconColor={COLORS.secondary}
+          iconBg={COLORS.secondary + '1A'}
+          footerContent={
+            <View style={styles.manualActions}>
+              <TouchableOpacity style={[styles.manualBtn, { backgroundColor: COLORS.statusHealthy }]} activeOpacity={0.85}>
+                <Text style={styles.manualBtnText}>DÉMARRER</Text>
+                <MaterialIcons name="play-arrow" size={16} color={COLORS.white} />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.manualBtn, { backgroundColor: COLORS.secondary }]} activeOpacity={0.85}>
+                <Text style={styles.manualBtnText}>ARRÊTER</Text>
+                <MaterialIcons name="stop" size={16} color={COLORS.white} />
+              </TouchableOpacity>
             </View>
+          }
+        />
 
-            <TouchableOpacity style={styles.activateBtn} activeOpacity={0.85}>
-              <Text style={styles.activateBtnText}>ACTIVER</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
+        {/* Stores */}
+        <EquipmentCard
+          icon="blinds"
+          title="Stores"
+          statusDot={COLORS.statusHealthy}
+          statusText="Position: 45%"
+          mode={modes.stores}
+          onModeToggle={toggleMode('stores')}
+          footerContent={
+            <View style={styles.footerCenter}>
+              <Text style={styles.activeText}>ACTIF</Text>
+            </View>
+          }
+        />
 
-        <View style={{ height: LAYOUT.bottomNavHeight + SPACING['2xl'] }} />
+        {/* Chauffage */}
+        <EquipmentCard
+          icon="heat-pump"
+          title="Chauffage"
+          statusDot={COLORS.outlineVariant}
+          statusText="Cible: 24.5°C"
+          mode={modes.chauffage}
+          onModeToggle={toggleMode('chauffage')}
+          footerContent={
+            <View style={styles.footerCenter}>
+              <Text style={styles.inactiveText}>EN VEILLE</Text>
+            </View>
+          }
+        />
+
+        {/* Abreuvoirs */}
+        <EquipmentCard
+          icon="water-drop"
+          title="Abreuvoirs"
+          statusDot={COLORS.statusHealthy}
+          statusText="Flux: 2.4L/min"
+          mode={modes.abreuvoirs}
+          onModeToggle={toggleMode('abreuvoirs')}
+          footerContent={
+            <View style={styles.footerCenter}>
+              <Text style={styles.activeText}>DÉBIT OK</Text>
+            </View>
+          }
+        />
+
+        <View style={{ height: 100 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -306,319 +279,256 @@ const EquipmentScreen = ({ navigation }) => {
 // 🎨 STYLES
 // ─────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F8F9FA' },
+  safe: { flex: 1, backgroundColor: COLORS.surface },
 
   // ── Top Bar
   topBar: {
-    flexDirection:    'row',
-    justifyContent:   'space-between',
-    alignItems:       'center',
-    backgroundColor:  C.primaryContainer,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: SPACING['2xl'],
-    paddingVertical:   SPACING.lg,
-    height:            LAYOUT.topBarHeight,
+    paddingVertical: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.outlineVariant + '20',
   },
-  coopDropdown: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    gap:             SPACING.sm,
-    backgroundColor: C.primary + '60',
-    paddingHorizontal: SPACING.md,
-    paddingVertical:   SPACING.sm,
-    borderRadius:    RADIUS.full,
-  },
-  coopDropdownText: {
-    fontFamily:  FONTS.inter,
-    fontSize:    FONT_SIZES.sm,
-    fontWeight:  FONT_WEIGHTS.bold,
-    color:       C.white,
-    letterSpacing: 0.5,
+  topBarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
   },
   topBarRight: {
     flexDirection: 'row',
-    alignItems:    'center',
-    gap:           SPACING.lg,
+    alignItems: 'center',
+    gap: SPACING.lg,
   },
-  notifBtn: { position: 'relative', padding: SPACING.xs },
-  notifDot: {
-    position:        'absolute',
-    top:             2, right: 2,
-    width:           8, height: 8,
-    borderRadius:    4,
-    backgroundColor: C.secondary,
-    borderWidth:     1.5,
-    borderColor:     C.primaryContainer,
+  topBarTitle: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  topBarIcon: {
+    padding: SPACING.xs,
+    borderRadius: RADIUS.full,
   },
   avatarWrapper: {
-    width:        40, height: 40,
-    borderRadius: 20,
-    overflow:     'hidden',
-    borderWidth:  2,
-    borderColor:  C.primaryContainer,
+    width: 32, height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: COLORS.primary + '30',
   },
-  avatar: { width: '100%', height: '100%' },
   avatarFallback: {
-    backgroundColor: C.primaryLight,
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
-  avatarInitials: {
-    fontFamily: FONTS.manrope,
-    fontSize:   FONT_SIZES.md,
-    fontWeight: FONT_WEIGHTS.bold,
-    color:      C.white,
+    flex: 1,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ── Scroll
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: SPACING['2xl'],
-    paddingTop:        SPACING['2xl'],
-    gap:               SPACING.xl,
+    paddingTop: SPACING['2xl'],
+    gap: SPACING.lg,
   },
 
   // ── Titre
-  titleSection: { gap: 4 },
+  titleSection: { gap: 4, marginBottom: SPACING.sm },
+  sectionLabel: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 3,
+  },
   screenTitle: {
-    fontFamily:  FONTS.manrope,
-    fontSize:    FONT_SIZES['3xl'],
-    fontWeight:  FONT_WEIGHTS.extraBold,
-    color:       C.primary,
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES['3xl'],
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: COLORS.primary,
     letterSpacing: -0.5,
   },
-  screenSubtitle: {
-    fontFamily: FONTS.inter,
-    fontSize:   FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.medium,
-    color:      C.onSurfaceVariant,
-    opacity:    0.8,
-  },
 
-  // ── Filtres
-  filtersRow: {
-    gap:         SPACING.md,
-    paddingRight: SPACING['2xl'],
+  // ── Bannière IA
+  iaBanner: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS['2xl'],
+    padding: SPACING['2xl'],
+    marginBottom: SPACING.md,
+    overflow: 'hidden',
+    ...SHADOWS.lg,
   },
-  filterPill: {
-    paddingHorizontal: SPACING['2xl'],
-    paddingVertical:   SPACING.sm + 2,
-    backgroundColor:   C.surfaceContainerHigh,
-    borderRadius:      RADIUS.full,
-    borderWidth:       1,
-    borderColor:       'transparent',
-  },
-  filterPillActive: {
-    backgroundColor: C.primary,
-    borderColor:     C.primary,
-  },
-  filterPillText: {
-    fontFamily: FONTS.inter,
-    fontSize:   FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semiBold,
-    color:      C.onSurfaceVariant,
-  },
-  filterPillTextActive: {
-    color:      C.white,
-    fontWeight: FONT_WEIGHTS.bold,
-  },
-
-  // ── Grille 2 colonnes
-  grid: {
+  iaBannerContent: { zIndex: 1 },
+  iaBannerTag: {
     flexDirection: 'row',
-    flexWrap:      'wrap',
-    gap:           SPACING.lg,
-  },
-  gridItem: {
-    width: '47.5%',
-  },
-
-  // ── Equipment Card
-  card: {
-    backgroundColor: C.surfaceContainerLow,
-    borderRadius:    20,
-    padding:         SPACING.xl,
-    height:          176,
-    justifyContent:  'space-between',
-    ...SHADOWS.sm,
-  },
-  cardAlert: {
-    backgroundColor: C.errorContainer,
-    borderWidth:     1.5,
-    borderColor:     C.error + '30',
-  },
-  cardTop: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
-    alignItems:     'flex-start',
-  },
-  cardIconBox: {
-    padding:      SPACING.sm,
-    borderRadius: RADIUS.lg,
-  },
-
-  // Badges mode
-  modeBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical:   3,
-    borderRadius:      RADIUS.full,
-  },
-  modeBadgeAuto: {
-    backgroundColor: C.primaryContainer,
-  },
-  modeBadgeManual: {
-    backgroundColor: C.surfaceVariant,
-  },
-  modeBadgeAlert: {
-    backgroundColor: C.error,
-  },
-  modeBadgeText: {
-    fontFamily: FONTS.inter,
-    fontSize:   9,
-    fontWeight: FONT_WEIGHTS.bold,
-    letterSpacing: 0.5,
-  },
-  modeBadgeTextAuto: {
-    color: C.primaryFixedDim,
-  },
-  modeBadgeTextManual: {
-    color: C.onSurfaceVariant,
-  },
-  modeBadgeTextAlert: {
-    color: C.white,
-  },
-
-  // Nom + toggle
-  cardName: {
-    fontFamily:  FONTS.manrope,
-    fontSize:    FONT_SIZES.lg,
-    fontWeight:  FONT_WEIGHTS.bold,
-    color:       C.primary,
+    alignItems: 'center',
+    gap: SPACING.sm,
     marginBottom: SPACING.md,
   },
-  cardToggleRow: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
-    alignItems:     'center',
-  },
-  cardStatus: {
+  iaBannerTagText: {
     fontFamily: FONTS.inter,
-    fontSize:   FONT_SIZES.sm,
-    fontWeight: FONT_WEIGHTS.semiBold,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.statusHealthy,
+    textTransform: 'uppercase',
+    letterSpacing: 2,
   },
-  switch: {
-    transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
+  iaBannerTitle: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.xl,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.white,
+    marginBottom: SPACING.sm,
+  },
+  iaBannerSubtitle: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.sm,
+    color: 'rgba(255,255,255,0.8)',
+    lineHeight: 20,
+  },
+  iaBannerDeco: {
+    position: 'absolute',
+    right: -20, top: -20,
+    width: 128, height: 128,
+    borderRadius: 64,
+    backgroundColor: COLORS.statusHealthy + '33',
   },
 
-  // ── Distributeur Card
-  distributorCard: {
-    borderRadius:  32,
-    padding:       SPACING['2xl'],
-    height:        210,
-    justifyContent:'space-between',
-    overflow:      'hidden',
-    ...SHADOWS.xl,
+  // ── Card
+  card: {
+    backgroundColor: COLORS.surfaceContainerLow,
+    borderRadius: RADIUS.xl,
+    padding: SPACING['2xl'],
+    borderWidth: 1,
+    borderColor: COLORS.outlineVariant + '1A',
+    ...SHADOWS.sm,
+    gap: SPACING.lg,
   },
-  distributorDeco: {
-    position:        'absolute',
-    top:             -48, right: -64,
-    width:           192, height: 192,
-    borderRadius:    96,
-    backgroundColor: C.secondary + '18',
-  },
-  distributorTop: {
-    flexDirection:  'row',
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems:     'flex-start',
-    zIndex:         1,
   },
-  distributorIconBox: {
-    backgroundColor: C.secondary + '30',
-    padding:         SPACING.md,
-    borderRadius:    RADIUS.xl,
-    alignSelf:       'flex-start',
-    marginBottom:    SPACING.md,
+  cardHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.lg,
+    flex: 1,
   },
-  distributorTitle: {
-    fontFamily:  FONTS.manrope,
-    fontSize:    FONT_SIZES['2xl'],
-    fontWeight:  FONT_WEIGHTS.bold,
-    color:       C.white,
-    letterSpacing: -0.3,
+  iconWrapper: {
+    width: 48, height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  distributorSubtitle: {
-    fontFamily: FONTS.inter,
-    fontSize:   FONT_SIZES.sm,
-    color:      C.primaryFixedDim,
-    fontWeight: FONT_WEIGHTS.medium,
-    marginTop:  2,
-  },
-  distributorTime: {
+  cardTitle: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.md,
     fontWeight: FONT_WEIGHTS.bold,
-    color:      C.white,
+    color: COLORS.primary,
+    marginBottom: 4,
   },
-  distributorBadge: {
-    backgroundColor: C.primaryContainer,
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  statusDot: {
+    width: 6, height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+
+  // ── Mode Toggle
+  modeToggleWrapper: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.surfaceContainer,
+    borderRadius: RADIUS.full,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: COLORS.outlineVariant + '1A',
+  },
+  modeBtn: {
     paddingHorizontal: SPACING.md,
-    paddingVertical:   SPACING.sm,
-    borderRadius:      RADIUS.full,
-    borderWidth:       1,
-    borderColor:       C.emerald400 + '35',
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
   },
-  distributorBadgeText: {
-    fontFamily:  FONTS.inter,
-    fontSize:    FONT_SIZES.xs,
-    fontWeight:  FONT_WEIGHTS.extraBold,
-    color:       C.emerald400,
+  modeBtnText: {
+    fontFamily: FONTS.inter,
+    fontSize: 9,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.onSurfaceVariant,
+    letterSpacing: 1,
+  },
+
+  // ── Card Footer
+  cardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.outlineVariant + '1A',
+    paddingTop: SPACING.lg,
+  },
+  footerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
+  activeIndicator: {
+    width: 6, height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.statusHealthy,
+  },
+  activeText: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: COLORS.statusHealthy,
     letterSpacing: 2,
     textTransform: 'uppercase',
   },
-  distributorBottom: {
-    flexDirection:  'row',
-    justifyContent: 'space-between',
-    alignItems:     'center',
-    zIndex:         1,
-  },
-  distributorAvatars: {
-    flexDirection: 'row',
-    alignItems:    'center',
-  },
-  distributorAvatar: {
-    width:          32, height: 32,
-    borderRadius:   16,
-    alignItems:     'center',
-    justifyContent: 'center',
-    borderWidth:    2,
-    borderColor:    C.primary,
-  },
-  distributorAvatarGreen: {
-    backgroundColor: C.emerald800,
-  },
-  distributorAvatarOrange: {
-    backgroundColor: C.secondary,
-  },
-  distributorAvatarText: {
+  inactiveText: {
     fontFamily: FONTS.inter,
-    fontSize:   9,
-    fontWeight: FONT_WEIGHTS.bold,
-    color:      C.white,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: COLORS.onSurfaceVariant,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    opacity: 0.4,
   },
-  activateBtn: {
-    backgroundColor:   C.secondary,
-    paddingHorizontal: SPACING['3xl'],
-    paddingVertical:   SPACING.md,
-    borderRadius:      RADIUS.xl,
-    shadowColor:       C.secondary,
-    shadowOffset:      { width: 0, height: 6 },
-    shadowOpacity:     0.3,
-    shadowRadius:      12,
-    elevation:         8,
+
+  // ── Manual Actions
+  manualActions: {
+    flexDirection: 'row',
+    gap: SPACING.md,
   },
-  activateBtnText: {
-    fontFamily:  FONTS.manrope,
-    fontSize:    FONT_SIZES.sm,
-    fontWeight:  FONT_WEIGHTS.bold,
-    color:       C.white,
-    letterSpacing: 1,
+  manualBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.lg,
+    borderRadius: RADIUS.lg,
+    ...SHADOWS.sm,
+  },
+  manualBtnText: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: COLORS.white,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
   },
 });
 

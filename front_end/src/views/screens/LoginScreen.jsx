@@ -17,8 +17,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import useAppStore from '../../controllers/context/AppStore';
-import { API, COLORS, FONTS, FONT_SIZES, FONT_WEIGHTS, RADIUS, SHADOWS, SPACING } from '../../models/utils/constants';
-import { MOCK_USER } from '../../models/utils/mockData';
+import {
+  API,
+  COLORS,
+  FONTS,
+  FONT_SIZES,
+  FONT_WEIGHTS,
+  RADIUS,
+  SHADOWS,
+  SPACING,
+} from '../../models/utils/constants';
+import { MOCK_ADMIN, MOCK_ELEVEUR } from '../../models/utils/mockData';
 
 // ─────────────────────────────────────────
 // 🔒 VALIDATION
@@ -41,18 +50,16 @@ const validate = (email, password) => {
 // ─────────────────────────────────────────
 // 📱 LOGIN SCREEN
 // ─────────────────────────────────────────
-const LoginScreen = () => {
+const LoginScreen = ({ navigation }) => {  // ✅ navigation ajouté
   const { login } = useAppStore();
 
-  // ── État formulaire
-  const [email, setEmail]             = useState('');
-  const [password, setPassword]       = useState('');
+  const [email, setEmail]               = useState('');
+  const [password, setPassword]         = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors]           = useState({});
-  const [loading, setLoading]         = useState(false);
-  const [globalError, setGlobalError] = useState('');
+  const [errors, setErrors]             = useState({});
+  const [loading, setLoading]           = useState(false);
+  const [globalError, setGlobalError]   = useState('');
 
-  // ── Animation shake sur erreur
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
   const shake = () => {
@@ -65,40 +72,47 @@ const LoginScreen = () => {
     ]).start();
   };
 
-  // ── Soumission
-  const handleLogin = async () => {
-    setGlobalError('');
-    const validationErrors = validate(email, password);
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      shake();
-      return;
-    }
-    setErrors({});
-    setLoading(true);
+const handleLogin = async () => {
+  setGlobalError('');
+  const validationErrors = validate(email, password);
+  if (Object.keys(validationErrors).length > 0) {
+    setErrors(validationErrors);
+    shake();
+    return;
+  }
+  setErrors({});
+  setLoading(true);
 
-    try {
-      if (API.USE_MOCK) {
-        // Simule un délai réseau
-        await new Promise((r) => setTimeout(r, 900));
-        // Accepte n'importe quel email/password en mode mock
-        await login(MOCK_USER, 'mock-token-dev-12345');
+  try {
+    if (API.USE_MOCK) {
+      await new Promise((r) => setTimeout(r, 900));
+
+      // ✅ Choix du bon utilisateur selon l'email
+      if (email.trim() === 'admin@poulia.com' && password === 'password') {
+        await login(MOCK_ADMIN, 'mock-token-admin-12345');
+
+      } else if (email.trim() === 'eleveur@poulia.com' && password === 'password') {
+        await login(MOCK_ELEVEUR, 'mock-token-eleveur-12345');
+
       } else {
-        const { authService } = await import('../../models/services/authService');
-        const data = await authService.login(email.trim(), password);
-        await login(data.user, data.token);
+        // ❌ Email ou mot de passe inconnu
+        setGlobalError('Identifiants incorrects. Utilisez admin@poulia.com ou eleveur@poulia.com');
+        shake();
       }
-    } catch (err) {
-      setGlobalError(err?.message || 'Identifiants incorrects. Veuillez réessayer.');
-      shake();
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  // ─────────────────────────────────────────
-  // 🎨 RENDER
-  // ─────────────────────────────────────────
+    } else {
+      const { authService } = await import('../../models/services/authService');
+      const data = await authService.login(email.trim(), password);
+      await login(data.user, data.token);
+    }
+  } catch (err) {
+    setGlobalError(err?.message || 'Identifiants incorrects. Veuillez réessayer.');
+    shake();
+  } finally {
+    setLoading(false);
+  }
+};
+
   return (
     <SafeAreaView style={styles.safe}>
       {/* Décorations fond */}
@@ -237,8 +251,12 @@ const LoginScreen = () => {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* ── Mot de passe oublié */}
-            <TouchableOpacity style={styles.forgotBtn} activeOpacity={0.7}>
+            {/* ── Mot de passe oublié ✅ navigation ajoutée */}
+            <TouchableOpacity
+              style={styles.forgotBtn}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('ForgotPassword')}
+            >
               <Text style={styles.forgotText}>Mot de passe oublié ?</Text>
             </TouchableOpacity>
           </Animated.View>

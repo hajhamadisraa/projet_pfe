@@ -1,18 +1,21 @@
 const express = require('express');
 const router  = express.Router();
-const { getAll, getById, create, update, remove } = require('../controllers/userController');
+const ctrl    = require('../controllers/userController');
 const { protect, authorize } = require('../middlewares/authMiddleware');
 
-// Toutes les routes : token requis + rôle admin obligatoire
-router.use(protect, authorize('admin'));
+// ── Routes publiques ───────────────────────────────────────
+router.get('/auth/verify-invite',  ctrl.verifyInvite);
+router.post('/auth/set-password',  ctrl.setPassword);
 
-router.route('/')
-  .get(getAll)
-  .post(create);
+// ── Routes protégées admin ─────────────────────────────────
+router.use(protect);
+router.use(authorize('admin'));
 
-router.route('/:id')
-  .get(getById)
-  .put(update)
-  .delete(remove);
+router.get('/',             ctrl.getAll);
+router.get('/:id',          ctrl.getById);
+router.post('/',            ctrl.create);
+router.put('/:id',          ctrl.update);
+router.patch('/:id/toggle', ctrl.toggleStatus);
+router.delete('/:id',       ctrl.remove);
 
 module.exports = router;

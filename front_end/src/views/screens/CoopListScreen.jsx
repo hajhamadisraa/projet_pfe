@@ -20,9 +20,8 @@ import {
   FONTS, FONT_SIZES, FONT_WEIGHTS,
   LAYOUT,
   RADIUS,
-  ROUTES,
   SHADOWS,
-  SPACING,
+  SPACING
 } from '../../models/utils/constants';
 
 // ─────────────────────────────────────────
@@ -141,7 +140,7 @@ const FilterChip = ({ label, active, color, onPress }) => (
 );
 
 // ─────────────────────────────────────────
-// 🧩 USER MENU MODAL (déconnexion)
+// 🧩 USER MENU MODAL
 // ─────────────────────────────────────────
 const UserMenuModal = ({ visible, user, onClose, onLogout, onProfile }) => (
   <Modal
@@ -216,12 +215,14 @@ const UserMenuModal = ({ visible, user, onClose, onLogout, onProfile }) => (
 const CoopListScreen = ({ navigation }) => {
   const coops       = useAppStore((s) => s.coops);
   const unreadCount = useAppStore((s) => s.unreadAlertsCount);
+  const alerts      = useAppStore((s) => s.alerts);   // ✅ pour la popup
   const user        = useAppStore((s) => s.user);
   const { setSelectedCoop, logout } = useAppStore();
 
-  const [search,     setSearch]     = useState('');
-  const [filter,     setFilter]     = useState('all');
-  const [menuVisible, setMenuVisible] = useState(false);
+  const [search,        setSearch]        = useState('');
+  const [filter,        setFilter]        = useState('all');
+  const [menuVisible,   setMenuVisible]   = useState(false);
+  const [alertsVisible, setAlertsVisible] = useState(false); // ✅ popup alertes
 
   const healthyCount  = coops.filter((c) => c.status === COOP_STATUS.HEALTHY).length;
   const warningCount  = coops.filter((c) => c.status === COOP_STATUS.WARNING).length;
@@ -240,13 +241,12 @@ const CoopListScreen = ({ navigation }) => {
     return result;
   }, [coops, search, filter]);
 
-  // ── Tap sur une coop
-  const handleCoopPress = async (coop) => {
-    await setSelectedCoop(coop);
-    navigation.navigate(ROUTES.HOME);
-  };
+// ✅ handleCoopPress
+const handleCoopPress = async (coop) => {
+  await setSelectedCoop(coop);
+  navigation.navigate('CoopTabs'); // ✅ nom défini dans EleveurNavigator
+};
 
-  // ── Déconnexion avec confirmation
   const handleLogout = () => {
     setMenuVisible(false);
     Alert.alert(
@@ -257,19 +257,17 @@ const CoopListScreen = ({ navigation }) => {
         {
           text: 'Se déconnecter',
           style: 'destructive',
-          onPress: async () => {
-            await logout();
-          },
+          onPress: async () => { await logout(); },
         },
       ]
     );
   };
 
-  // ── Aller au profil
-  const handleProfile = () => {
-    setMenuVisible(false);
-    navigation.navigate(ROUTES.PROFILE);
-  };
+// ✅ handleProfile  
+const handleProfile = () => {
+  setMenuVisible(false);
+  navigation.navigate('CoopTabs', { screen: 'ProfileTab' });
+};
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -277,7 +275,6 @@ const CoopListScreen = ({ navigation }) => {
       {/* ── Top App Bar */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
-          {/* Avatar → ouvre le menu utilisateur */}
           <TouchableOpacity
             style={styles.avatarWrapper}
             onPress={() => setMenuVisible(true)}
@@ -296,11 +293,11 @@ const CoopListScreen = ({ navigation }) => {
           <Text style={styles.topBarTitle}>PoulIA</Text>
         </View>
 
+        {/* ✅ Uniquement le bouton notif, logout supprimé */}
         <View style={styles.topBarRight}>
-          {/* Notifications */}
           <TouchableOpacity
             style={styles.notifBtn}
-            onPress={() => navigation.getParent()?.navigate(ROUTES.ALERTS)}
+            onPress={() => setAlertsVisible(true)}  // ✅ ouvre la popup
             activeOpacity={0.8}
           >
             <MaterialIcons name="notifications" size={24} color={COLORS.emerald400} />
@@ -311,15 +308,6 @@ const CoopListScreen = ({ navigation }) => {
                 </Text>
               </View>
             )}
-          </TouchableOpacity>
-
-          {/* Bouton déconnexion rapide */}
-          <TouchableOpacity
-            style={styles.logoutBtn}
-            onPress={handleLogout}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="logout" size={20} color={COLORS.emerald400} />
           </TouchableOpacity>
         </View>
       </View>
@@ -332,6 +320,64 @@ const CoopListScreen = ({ navigation }) => {
         onLogout={handleLogout}
         onProfile={handleProfile}
       />
+
+      {/* ── ✅ Popup Alertes */}
+      <Modal
+        visible={alertsVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAlertsVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.alertsOverlay}
+          activeOpacity={1}
+          onPress={() => setAlertsVisible(false)}
+        >
+          <View style={styles.alertsPopup}>
+            {/* Header popup */}
+            <View style={styles.alertsPopupHeader}>
+              <Text style={styles.alertsPopupTitle}>Alertes</Text>
+              <TouchableOpacity onPress={() => setAlertsVisible(false)}>
+                <MaterialIcons name="close" size={22} color={COLORS.onSurface} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Contenu */}
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {alerts && alerts.length > 0 ? (
+                alerts.map((alert, index) => (
+                  <View key={index} style={styles.alertItem}>
+                    <View style={[
+                      styles.alertItemIcon,
+                      { backgroundColor: alert.type === 'critical'
+                          ? COLORS.errorContainer
+                          : COLORS.statusWarningBg },
+                    ]}>
+                      <MaterialIcons
+                        name={alert.type === 'critical' ? 'error' : 'warning'}
+                        size={18}
+                        color={alert.type === 'critical' ? COLORS.error : COLORS.secondary}
+                      />
+                    </View>
+                    <View style={styles.alertItemContent}>
+                      <Text style={styles.alertItemTitle} numberOfLines={1}>
+                        {alert.title || alert.message}
+                      </Text>
+                      {alert.subtitle ? (
+                        <Text style={styles.alertItemSubtitle} numberOfLines={1}>
+                          {alert.subtitle}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.alertsEmpty}>Aucune alerte récente.</Text>
+              )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <ScrollView
         style={styles.scroll}
@@ -388,7 +434,7 @@ const CoopListScreen = ({ navigation }) => {
           )}
         </View>
 
-        {/* ── Filtres */}
+        {/* ── ✅ Filtres sans "Critique" */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -409,12 +455,6 @@ const CoopListScreen = ({ navigation }) => {
             active={filter === COOP_STATUS.WARNING}
             color={COLORS.secondary}
             onPress={() => setFilter(COOP_STATUS.WARNING)}
-          />
-          <FilterChip
-            label={`${criticalCount} Critique`}
-            active={filter === COOP_STATUS.CRITICAL}
-            color={COLORS.error}
-            onPress={() => setFilter(COOP_STATUS.CRITICAL)}
           />
         </ScrollView>
 
@@ -447,11 +487,6 @@ const CoopListScreen = ({ navigation }) => {
 
         <View style={{ height: LAYOUT.bottomNavHeight + SPACING['2xl'] }} />
       </ScrollView>
-
-      {/* ── FAB ajouter coop */}
-      <TouchableOpacity style={styles.fab} activeOpacity={0.85}>
-        <MaterialIcons name="add" size={28} color={COLORS.white} />
-      </TouchableOpacity>
     </SafeAreaView>
   );
 };
@@ -523,13 +558,8 @@ const styles = StyleSheet.create({
   notifBadgeText: {
     fontSize: 9, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white,
   },
-  logoutBtn: {
-    padding: SPACING.sm,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.white10,
-  },
 
-  // ── Modal menu utilisateur
+  // ── Modal overlay générique
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -538,6 +568,8 @@ const styles = StyleSheet.create({
     paddingTop: LAYOUT.topBarHeight + 60,
     paddingLeft: SPACING['2xl'],
   },
+
+  // ── User menu
   userMenu: {
     backgroundColor: COLORS.white,
     borderRadius: RADIUS.xl,
@@ -584,10 +616,7 @@ const styles = StyleSheet.create({
     color: COLORS.white60,
     marginTop: 2,
   },
-  userMenuDivider: {
-    height: 1,
-    backgroundColor: COLORS.surfaceContainer,
-  },
+  userMenuDivider: { height: 1, backgroundColor: COLORS.surfaceContainer },
   userMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -608,6 +637,67 @@ const styles = StyleSheet.create({
     color: COLORS.onSurface,
   },
 
+  // ── ✅ Popup Alertes
+  alertsOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  alertsPopup: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    padding: SPACING['2xl'],
+    maxHeight: '60%',
+    ...SHADOWS.xl,
+  },
+  alertsPopupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+  },
+  alertsPopupTitle: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.xl,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.primary,
+  },
+  alertItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.outlineVariant + '30',
+  },
+  alertItemIcon: {
+    width: 36, height: 36,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  alertItemContent: { flex: 1 },
+  alertItemTitle: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semiBold,
+    color: COLORS.onSurface,
+  },
+  alertItemSubtitle: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.onSurfaceVariant,
+    marginTop: 2,
+  },
+  alertsEmpty: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.onSurfaceVariant,
+    textAlign: 'center',
+    paddingVertical: SPACING['3xl'],
+  },
+
   // ── Scroll
   scroll: { flex: 1 },
   scrollContent: {
@@ -618,14 +708,6 @@ const styles = StyleSheet.create({
 
   // ── Titre
   titleSection: { gap: 2 },
-  sectionLabel: {
-    fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.onSurfaceVariant,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-  },
   screenTitle: {
     fontFamily: FONTS.manrope,
     fontSize: FONT_SIZES['3xl'],
@@ -635,11 +717,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Résumé
-  summaryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
+  summaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   summaryChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -673,10 +751,7 @@ const styles = StyleSheet.create({
   },
 
   // ── Filtres
-  filtersRow: {
-    gap: SPACING.sm,
-    paddingRight: SPACING['2xl'],
-  },
+  filtersRow: { gap: SPACING.sm, paddingRight: SPACING['2xl'] },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',

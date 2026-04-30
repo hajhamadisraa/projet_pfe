@@ -1,15 +1,18 @@
 // src/navigation/AuthNavigator.jsx
 import { createStackNavigator } from '@react-navigation/stack';
-import { ROUTES } from '../models/utils/constants';
+import React from 'react';
 
-// ── Screens
+import ForgotPasswordScreen from '../views/screens/ForgotPasswordScreen';
 import LoginScreen from '../views/screens/LoginScreen';
+import SetPasswordScreen from '../views/screens/SetPasswordScreen';
 
 const Stack = createStackNavigator();
 
 const AuthNavigator = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen name={ROUTES.LOGIN} component={LoginScreen} />
+    <Stack.Screen name="Login"          component={LoginScreen} />
+    <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+    <Stack.Screen name="SetPassword"    component={SetPasswordScreen} />
   </Stack.Navigator>
 );
 
