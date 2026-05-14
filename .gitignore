@@ -1,0 +1,24 @@
+# Python / AI
+venv/
+__pycache__/
+*.pyc
+
+# Models IA
+*.pt
+*.pth
+*.onnx
+runs/
+yolov8n.pt
+
+# Node / React Native
+node_modules/
+
+# ESP32 / PlatformIO
+.pio/
+
+# Build
+dist/
+build/
+
+# Cache
+.cache/

@@ -1,0 +1,5 @@
+train: C:/Users/Israa/Desktop/projet_pfe_Poulailler/ai-server/dataset/train/images
+val: C:/Users/Israa/Desktop/projet_pfe_Poulailler/ai-server/dataset/valid/images
+test: C:/Users/Israa/Desktop/projet_pfe_Poulailler/ai-server/dataset/test/images
+nc: 2
+names: ["AbNormal", "Normal"]
