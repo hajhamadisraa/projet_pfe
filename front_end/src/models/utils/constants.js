@@ -334,3 +334,10 @@ export const USER_STATUS = {
   ACTIVE:   'ACTIVE',    // compte validé et actif
   SUSPENDED:'SUSPENDED', // suspendu par l'admin
 };
+
+// Ajoute ces lignes dans constants.js
+export const AI_CONFIG = {
+    BACKEND_URL: 'http://192.168.1.112:5000',
+    AI_URL:      'http://192.168.1.59:8000',
+    STREAM_URL:  'http://192.168.1.59:8000/video/stream?camera_url=0',
+};

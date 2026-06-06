@@ -1,62 +1,46 @@
-// src/controllers/hooks/useRealtimeSensors.js
-// ═══════════════════════════════════════════════════════════════
-//  Hook — Données capteurs en temps réel via Socket.IO
-//  Usage : const { sensors, connected } = useRealtimeSensors(coopId)
-// ═══════════════════════════════════════════════════════════════
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import { API } from '../../models/utils/constants';
 
-// URL Socket.IO = même serveur que l'API mais sans /api
 const SOCKET_URL = API.BASE_URL.replace('/api', '');
 
 export default function useRealtimeSensors(coopId) {
-  const socketRef = useRef(null);
-
-  const [connected, setConnected] = useState(false);
-  const [sensors,   setSensors]   = useState(null);
+  const socketRef  = useRef(null);
+  const [connected,  setConnected]  = useState(false);
+  const [sensors,    setSensors]    = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
 
   useEffect(() => {
     if (!coopId) return;
 
-    // ── Connexion au serveur Socket.IO ───────────────────────
     console.log(`[Socket] Connexion à ${SOCKET_URL}`);
-
     const socket = io(SOCKET_URL, {
-      transports:         ['websocket'],
-      reconnection:       true,
-      reconnectionDelay:  2000,
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionDelay: 2000,
       reconnectionAttempts: 10,
     });
-
     socketRef.current = socket;
 
-    // ── Événements de connexion ──────────────────────────────
     socket.on('connect', () => {
-      console.log('[Socket] ✅ Connecté :', socket.id);
       setConnected(true);
-
-      // Rejoindre la room du poulailler pour recevoir ses données
       socket.emit('join_coop', coopId);
+      console.log('[Socket] ✅ Connecté :', socket.id);
       console.log(`[Socket] Rejoint room : coop_${coopId}`);
     });
 
     socket.on('disconnect', (reason) => {
-      console.log('[Socket] ❌ Déconnecté :', reason);
       setConnected(false);
+      console.log('[Socket] ❌ Déconnecté :', reason);
     });
 
     socket.on('connect_error', (err) => {
-      console.error('[Socket] Erreur connexion :', err.message);
       setConnected(false);
+      console.error('[Socket] Erreur connexion :', err.message);
     });
 
-    // ── Réception données capteurs (temps réel depuis MQTT) ──
-    // Émis par mqttService.js quand l'ESP32 publie des données
     socket.on('sensor_update', (data) => {
-      if (data.coopId !== coopId) return; // filtrer par poulailler
-
+      if (data.coopId !== coopId) return;
       console.log(`[Socket] 📊 Données reçues :`, data);
 
       setSensors((prev) => ({
@@ -80,17 +64,29 @@ export default function useRealtimeSensors(coopId) {
           trend: 'flat',
           alert: false,
         },
+        // ✅ Niveau eau — reçu depuis l'ESP32 via mqttService
+        waterLevel: {
+          value: data.waterLevel ?? prev?.waterLevel?.value ?? 0,
+          trend: calcTrend(prev?.waterLevel?.value, data.waterLevel),
+          alert: (data.waterLevel ?? 100) < 20,
+        },
+        pumpOn: {
+          value: data.pumpOn ?? prev?.pumpOn?.value ?? false,
+        },
       }));
 
       setLastUpdate(new Date(data.timestamp || Date.now()));
     });
 
-    // ── Cleanup au démontage ─────────────────────────────────
     return () => {
-      if (socket.connected) {
-        socket.emit('leave_coop', coopId);
-      }
-      socket.disconnect();
+      try {
+        socket.off('connect');
+        socket.off('disconnect');
+        socket.off('connect_error');
+        socket.off('sensor_update');
+        if (socket.connected) socket.emit('leave_coop', coopId);
+        socket.disconnect();
+      } catch (e) {}
       console.log('[Socket] Déconnecté proprement');
     };
   }, [coopId]);
@@ -98,9 +94,6 @@ export default function useRealtimeSensors(coopId) {
   return { sensors, connected, lastUpdate };
 }
 
-// ─────────────────────────────────────────────────────────────
-//  Calcule la tendance entre deux valeurs
-// ─────────────────────────────────────────────────────────────
 function calcTrend(prev, curr) {
   if (prev == null || curr == null) return 'flat';
   if (curr > prev + 0.3) return 'up';

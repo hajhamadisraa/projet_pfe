@@ -3,21 +3,22 @@
 #include <PubSubClient.h>
 #include <WiFi.h>
 
-// ═══════════════════════════════════════════════════════════════
-//  CLIENT MQTT — mqtt_client.h
-// ═══════════════════════════════════════════════════════════════
-
 class MqttManager {
 public:
     void begin(const String& mac, const String& token);
     void loop();
+    bool isConnected();
 
-    // Publications
-    void publishData(float temp, float humidity, float lux, bool fanOn, bool sensorOk);
+    // ✅ publishData avec int waterPct (pas bool waterPresent)
+    void publishData(float temp, float humidity, float lux,
+                     bool fanOn, bool sensorOk,
+                     int waterPct = 0, bool pumpOn = false);
+
     void publishHeartbeat(bool sensorOk);
-    void publishActuatorsState(bool fanOn);
 
-    bool          isConnected();   // ← plus de const (PubSubClient::connected n'est pas const)
+    // ✅ publishActuatorsState avec bool pumpOn
+    void publishActuatorsState(bool fanOn, bool pumpOn = false);
+
     PubSubClient* client();
 
 private:
@@ -36,7 +37,6 @@ private:
 
     void _connect();
     void _buildTopics();
-
     static void _onMessage(char* topic, byte* payload, unsigned int length);
 };
 

@@ -368,7 +368,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
           <View style={styles.populationFooter}>
             <Text style={styles.populationFooterLabel}>Total Chickens Count</Text>
-            <MaterialIcons name="monitoring" size={20} color={COLORS.emerald400} style={{ opacity: 0.5 }} />
+            <MaterialIcons name="bar-chart" size={20} color={COLORS.emerald400} style={{ opacity: 0.5 }} />
           </View>
           <View style={styles.populationDeco} />
         </LinearGradient>

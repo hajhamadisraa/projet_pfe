@@ -25,11 +25,10 @@ const useAppStore = create((set, get) => ({
   token: null,
   isAuthenticated: false,
 
-  setUser:  (user)  => set({ user, isAuthenticated: !!user }),
+  setUser: (user) => set({ user, isAuthenticated: !!user }),
   setToken: (token) => set({ token }),
 
   login: async (userData, token) => {
-    // ✅ Normaliser l'id — le backend renvoie _id, on le mappe en id
     const normalizedUser = {
       ...userData,
       id: userData.id || userData._id,
@@ -43,34 +42,31 @@ const useAppStore = create((set, get) => ({
     await storageHelper.clearAuth();
     await storageHelper.removeSelectedCoop();
     set({
-      user:              null,
-      token:             null,
-      isAuthenticated:   false,
-      selectedCoop:      null,
-      coops:             [],
-      sensors:           null,
-      alerts:            [],
+      user: null,
+      token: null,
+      isAuthenticated: false,
+      selectedCoop: null,
+      coops: [],
+      sensors: null,
+      alerts: [],
       unreadAlertsCount: 0,
     });
   },
 
   // ───────────────────────────────────────
-  // 🏠 FERME
+  // 🏠 FERME & COOPS & CAPTEURS (inchangé)
   // ───────────────────────────────────────
   farm: null,
   setFarm: (farm) => set({ farm }),
 
-  // ───────────────────────────────────────
-  // 🐔 COOPS
-  // ───────────────────────────────────────
-  coops:        [],
+  coops: [],
   selectedCoop: null,
   coopsLoading: false,
-  coopsError:   null,
+  coopsError: null,
 
-  setCoops:        (coops)   => set({ coops }),
+  setCoops: (coops) => set({ coops }),
   setCoopsLoading: (loading) => set({ coopsLoading: loading }),
-  setCoopsError:   (error)   => set({ coopsError: error }),
+  setCoopsError: (error) => set({ coopsError: error }),
 
   setSelectedCoop: async (coop) => {
     await storageHelper.saveSelectedCoop(coop);
@@ -81,20 +77,18 @@ const useAppStore = create((set, get) => ({
     try {
       set({ coopsLoading: true, coopsError: null });
       const res = await api.get('/coops/my');
-      // Remplace la fonction map dans fetchCoops par :
-const coops = (res.data || []).map((c) => ({
-  id:             c._id,
-  name:           c.name,
-  sector:         c.sector,
-  status:         c.status === 'healthy' ? 'healthy'
-                : c.status === 'warning' ? 'warning' : 'critical',
-  population:     c.population || 0,
-  mortality:      c.mortality  || 0,
-  temperature:    c.sensors?.temperature?.value || 24,
-  humidity:       c.sensors?.humidity?.value    || 60,
-  warningMessage: c.warningMessage || null,
-  espMac:         c.espMac || null,    // ← AJOUTER
-}));
+      const coops = (res.data || []).map((c) => ({
+        id: c._id,
+        name: c.name,
+        sector: c.sector,
+        status: c.status === 'healthy' ? 'healthy' : c.status === 'warning' ? 'warning' : 'critical',
+        population: c.population || 0,
+        mortality: c.mortality || 0,
+        temperature: c.sensors?.temperature?.value || 24,
+        humidity: c.sensors?.humidity?.value || 60,
+        warningMessage: c.warningMessage || null,
+        espMac: c.espMac || null,
+      }));
       set({ coops, coopsLoading: false });
     } catch (err) {
       console.error('[AppStore] fetchCoops erreur:', err);
@@ -102,53 +96,45 @@ const coops = (res.data || []).map((c) => ({
     }
   },
 
-  // ───────────────────────────────────────
-  // 📡 CAPTEURS
-  // ───────────────────────────────────────
   sensors: null,
   setSensors: (sensors) => set({ sensors }),
   updateSensor: (key, value) =>
     set((state) => ({
-      sensors: state.sensors
-        ? { ...state.sensors, [key]: { ...state.sensors[key], value } }
-        : state.sensors,
+      sensors: state.sensors ? { ...state.sensors, [key]: { ...state.sensors[key], value } } : state.sensors,
     })),
 
   // ───────────────────────────────────────
   // 🔔 ALERTES
   // ───────────────────────────────────────
-  alerts:            [],
+  alerts: [],
   unreadAlertsCount: 0,
-  alertsLoading:     false,
+  alertsLoading: false,
 
   fetchAlerts: async () => {
     try {
       set({ alertsLoading: true });
       const res = await api.get('/alerts');
       const alerts = (res.data || []).map((a) => ({
-        id:          a._id,
-        type:        a.type,
-        severity:    a.severity,
-        category:    a.category,
-        title:       a.title,
+        id: a._id,
+        type: a.type,
+        severity: a.severity,
+        category: a.category,
+        title: a.title,
         description: a.description,
-        location:    a.location,
-        timestamp:   new Date(a.createdAt).toLocaleString('fr-FR', {
-                       day:    '2-digit',
-                       month:  '2-digit',
-                       hour:   '2-digit',
-                       minute: '2-digit',
-                     }),
+        location: a.location,
+        timestamp: new Date(a.createdAt).toLocaleString('fr-FR', {
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
         isRead: a.isRead,
-
-        // ✅ Mapper metadata → meta pour les alertes de type account
-        // AlertsScreen utilise alert.meta.userId, alert.meta.userName, etc.
-        meta: a.metadata || null,
+        meta: a.metadata || a.meta || null,   // support des deux noms
       }));
       set({
         alerts,
         unreadAlertsCount: alerts.filter((a) => !a.isRead).length,
-        alertsLoading:     false,
+        alertsLoading: false,
       });
     } catch (err) {
       console.error('[AppStore] fetchAlerts erreur:', err);
@@ -163,9 +149,55 @@ const coops = (res.data || []).map((c) => ({
 
   addAlert: (alert) =>
     set((state) => ({
-      alerts:            [alert, ...state.alerts],
+      alerts: [alert, ...state.alerts],
       unreadAlertsCount: state.unreadAlertsCount + 1,
     })),
+
+  // ───── NOUVELLES FONCTIONS POUR CRÉER LES ALERTES ÉLEVEURS ─────
+
+  /** Alerte Température : Seuil dépassé */
+  createTemperatureAlert: (sensorName, currentTemp, threshold, isAbove = true, coopName = '') => {
+    const direction = isAbove ? 'above' : 'below';
+    const alert = {
+      id: 'temp-' + Date.now(),
+      category: 'temperature',
+      severity: 'critical',
+      title: isAbove ? 'Température trop élevée !' : 'Température trop basse !',
+      description: `Le capteur ${sensorName} a enregistré ${currentTemp}°C (${isAbove ? 'au-dessus' : 'en-dessous'} du seuil de ${threshold}°C).`,
+      location: coopName || sensorName,
+      timestamp: new Date().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      isRead: false,
+      meta: {
+        sensorName,
+        currentTemp,
+        threshold,
+        direction,
+      },
+    };
+    get().addAlert(alert);
+    return alert;
+  },
+
+  /** Alerte Ventilateur : Activation ou Désactivation manuelle */
+  createFanManualAlert: (fanName, action, coopName = '') => {
+    const isActivated = action === 'activated';
+    const alert = {
+      id: 'fan-' + Date.now(),
+      category: 'fan',
+      severity: 'warning',
+      title: isActivated ? 'Ventilateur activé manuellement' : 'Ventilateur désactivé manuellement',
+      description: `Le ventilateur "${fanName}" a été ${isActivated ? 'activé' : 'désactivé'} manuellement.`,
+      location: coopName || fanName,
+      timestamp: new Date().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+      isRead: false,
+      meta: {
+        fanName,
+        fanState: action, // 'activated' ou 'deactivated'
+      },
+    };
+    get().addAlert(alert);
+    return alert;
+  },
 
   dismissAlert: async (alertId) => {
     try {
@@ -173,7 +205,7 @@ const coops = (res.data || []).map((c) => ({
       set((state) => {
         const updated = state.alerts.filter((a) => a.id !== alertId);
         return {
-          alerts:            updated,
+          alerts: updated,
           unreadAlertsCount: updated.filter((a) => !a.isRead).length,
         };
       });
@@ -200,7 +232,7 @@ const coops = (res.data || []).map((c) => ({
           a.id === alertId ? { ...a, isRead: true } : a
         );
         return {
-          alerts:            updated,
+          alerts: updated,
           unreadAlertsCount: updated.filter((a) => !a.isRead).length,
         };
       });
@@ -213,7 +245,7 @@ const coops = (res.data || []).map((c) => ({
     try {
       await api.patch('/alerts/read-all');
       set((state) => ({
-        alerts:            state.alerts.map((a) => ({ ...a, isRead: true })),
+        alerts: state.alerts.map((a) => ({ ...a, isRead: true })),
         unreadAlertsCount: 0,
       }));
     } catch (err) {
@@ -224,14 +256,14 @@ const coops = (res.data || []).map((c) => ({
   setAlertsLoading: (loading) => set({ alertsLoading: loading }),
 
   // ───────────────────────────────────────
-  // 🔔 PARAMÈTRES NOTIFICATIONS
+  // Autres parties (notificationSettings, equipment, theme, initializeApp...)
   // ───────────────────────────────────────
   notificationSettings: {
     emergencyOverride: true,
-    security:          true,
-    health:            true,
-    environment:       false,
-    system:            true,
+    security: true,
+    health: true,
+    environment: false,
+    system: true,
   },
 
   setNotificationSettings: async (settings) => {
@@ -246,10 +278,7 @@ const coops = (res.data || []).map((c) => ({
     set({ notificationSettings: updated });
   },
 
-  // ───────────────────────────────────────
-  // ⚙️ ÉQUIPEMENTS
-  // ───────────────────────────────────────
-  equipment:       [],
+  equipment: [],
   equipmentFilter: 'all',
 
   setEquipment: (equipment) => set({ equipment }),
@@ -261,9 +290,6 @@ const coops = (res.data || []).map((c) => ({
     })),
   setEquipmentFilter: (filter) => set({ equipmentFilter: filter }),
 
-  // ───────────────────────────────────────
-  // 🎨 THÈME
-  // ───────────────────────────────────────
   theme: 'light',
 
   setTheme: async (theme) => {
@@ -278,7 +304,7 @@ const coops = (res.data || []).map((c) => ({
   },
 
   // ───────────────────────────────────────
-  // 🚀 INITIALISATION AU DÉMARRAGE
+  // INITIALISATION
   // ───────────────────────────────────────
   initializeApp: async () => {
     try {
@@ -286,24 +312,24 @@ const coops = (res.data || []).map((c) => ({
 
       const notificationSettings = stored.notificationSettings || {
         emergencyOverride: true,
-        security:          true,
-        health:            true,
-        environment:       false,
-        system:            true,
+        security: true,
+        health: true,
+        environment: false,
+        system: true,
       };
       const theme = stored.theme || 'light';
 
       if (API.USE_MOCK) {
         set({
-          user:              null,
-          token:             null,
-          isAuthenticated:   false,
-          farm:              MOCK_FARM,
-          coops:             MOCK_COOPS,
-          selectedCoop:      stored.selectedCoop || MOCK_COOPS[0],
-          sensors:           MOCK_SENSORS,
-          alerts:            MOCK_ALERTS,
-          unreadAlertsCount: MOCK_ALERTS.filter((a) => !a.read).length,
+          user: null,
+          token: null,
+          isAuthenticated: false,
+          farm: MOCK_FARM,
+          coops: MOCK_COOPS,
+          selectedCoop: stored.selectedCoop || MOCK_COOPS[0],
+          sensors: MOCK_SENSORS,
+          alerts: MOCK_ALERTS,
+          unreadAlertsCount: MOCK_ALERTS.filter((a) => !a.read && !a.isRead).length,
           notificationSettings,
           theme,
           isAppReady: true,
@@ -311,16 +337,13 @@ const coops = (res.data || []).map((c) => ({
         return;
       }
 
-      // ✅ Normaliser l'user stocké — s'assurer que id est défini
-      const storedUser = stored.user
-        ? { ...stored.user, id: stored.user.id || stored.user._id }
-        : null;
+      const storedUser = stored.user ? { ...stored.user, id: stored.user.id || stored.user._id } : null;
 
       set({
-        user:             storedUser,
-        token:            stored.token,
-        isAuthenticated:  !!stored.token,
-        selectedCoop:     stored.selectedCoop,
+        user: storedUser,
+        token: stored.token,
+        isAuthenticated: !!stored.token,
+        selectedCoop: stored.selectedCoop,
         notificationSettings,
         theme,
         isAppReady: true,
@@ -331,24 +354,20 @@ const coops = (res.data || []).map((c) => ({
     }
   },
 
-  // ───────────────────────────────────────
-  // 🔁 RESET COMPLET
-  // ───────────────────────────────────────
-  resetStore: () =>
-    set({
-      user:              null,
-      token:             null,
-      isAuthenticated:   false,
-      farm:              null,
-      coops:             [],
-      selectedCoop:      null,
-      sensors:           null,
-      alerts:            [],
-      unreadAlertsCount: 0,
-      equipment:         [],
-      coopsLoading:      false,
-      coopsError:        null,
-    }),
+  resetStore: () => set({
+    user: null,
+    token: null,
+    isAuthenticated: false,
+    farm: null,
+    coops: [],
+    selectedCoop: null,
+    sensors: null,
+    alerts: [],
+    unreadAlertsCount: 0,
+    equipment: [],
+    coopsLoading: false,
+    coopsError: null,
+  }),
 }));
 
 export default useAppStore;

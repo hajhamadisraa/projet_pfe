@@ -20,26 +20,86 @@ import { MOCK_COOPS, MOCK_USERS } from '../../models/utils/mockData';
 const USE_MOCK = false;
 
 const ROLES = [
-  { key: 'ADMIN',    label: 'Admin',  color: COLORS.primary, bg: COLORS.primary + '20' },
-  { key: 'OPERATOR', label: 'Eleveur',color: '#1D4ED8',      bg: '#EFF6FF' },
+  { key: 'SUPER_ADMIN', label: 'Super Admin', color: '#7C3AED', bg: '#F5F3FF' },
+  { key: 'ADMIN',       label: 'Admin',       color: COLORS.primary, bg: COLORS.primary + '20' },
+  { key: 'OPERATOR',    label: 'Eleveur',     color: '#1D4ED8', bg: '#EFF6FF' },
 ];
-const getRoleConfig = (roleKey) => ROLES.find((r) => r.key === roleKey) || ROLES[1];
 
-// ✅ Garde null — si un coop est invalide, on retourne null et on filtre ensuite
+const getRoleConfig = (roleKey) => ROLES.find((r) => r.key === roleKey) || ROLES[2];
+
+// ─────────────────────────────────────────
+// PERMISSIONS — toute la logique ici
+// ─────────────────────────────────────────
+//
+//  SUPER_ADMIN → peut tout faire sur tout le monde
+//  ADMIN       → peut gérer les Eleveurs seulement
+//  OPERATOR    → n'a pas accès à cette page
+//
+const getPermissions = (currentUser, targetUser) => {
+  const myRole   = currentUser?.roleBadgeType;
+  const isSelf   = String(targetUser?.id) === String(currentUser?.id);
+  const targetRole = targetUser?.roleBadgeType;
+
+  if (myRole === 'SUPER_ADMIN') {
+    // Super Admin peut tout, sauf se supprimer lui-même
+    return {
+      canEdit:   true,
+      canToggle: !isSelf,
+      canDelete: !isSelf,
+      isSelf,
+    };
+  }
+
+  if (myRole === 'ADMIN') {
+    // Admin peut gérer uniquement les Eleveurs (OPERATOR)
+    const targetIsOperator = targetRole === 'OPERATOR';
+    return {
+      canEdit:   targetIsOperator,
+      canToggle: targetIsOperator && !isSelf,
+      canDelete: targetIsOperator && !isSelf,
+      isSelf,
+    };
+  }
+
+  // OPERATOR ou rôle inconnu : aucun droit (ne devrait pas voir la page)
+  return { canEdit: false, canToggle: false, canDelete: false, isSelf };
+};
+
+// Rôles que l'admin connecté peut CRÉER/ASSIGNER
+const getAssignableRoles = (myRole) => {
+  if (myRole === 'SUPER_ADMIN') return ROLES;                        // tous les rôles
+  if (myRole === 'ADMIN')       return ROLES.filter(r => r.key === 'OPERATOR'); // Eleveur seulement
+  return [];
+};
+
 const adaptCoopForSelector = (c) => {
   if (!c) return null;
+  const id = c._id || c.id;
+  if (!id) return null;
   return {
-    id:         c._id || c.id,
-    name:       c.name || c.nom || '',
-    sector:     c.sector || c.secteur || '',
-    status:     c.status === 'healthy' ? 'healthy'
-              : c.status === 'warning' ? 'warning' : 'critical',
-    population: c.population || 0,
+    id: String(id),
+    name: c.name || c.nom || '',
+    sector: c.sector || c.secteur || '',
+    status: c.status === 'healthy' ? 'healthy' : c.status === 'warning' ? 'warning' : 'critical',
+    population: Number(c.population) || 0,
   };
 };
 
 // ─────────────────────────────────────────
-// 🧩 SOUS-COMPOSANTS
+// KPI CARD
+// ─────────────────────────────────────────
+const KpiCard = ({ icon, label, value, color, bg, trend }) => (
+  <View style={[styles.kpiCard, { borderLeftColor: color }]}>
+    <View style={[styles.kpiIconBox, { backgroundColor: bg }]}>
+      <MaterialIcons name={icon} size={18} color={color} />
+    </View>
+    <Text style={[styles.kpiValue, { color }]}>{value}</Text>
+    <Text style={styles.kpiLabel}>{label}</Text>
+  </View>
+);
+
+// ─────────────────────────────────────────
+// ROLE BADGE
 // ─────────────────────────────────────────
 const RoleBadge = ({ roleKey }) => {
   const config = getRoleConfig(roleKey);
@@ -50,11 +110,14 @@ const RoleBadge = ({ roleKey }) => {
   );
 };
 
+// ─────────────────────────────────────────
+// COOP SELECTOR
+// ─────────────────────────────────────────
 const CoopSelector = ({ coops, selectedCoopIds, onToggle }) => (
   <View style={styles.coopSelectorList}>
     {coops.map((coop) => {
-      if (!coop || !coop.id) return null;
-      const isSelected  = selectedCoopIds.includes(coop.id);
+      if (!coop?.id) return null;
+      const isSelected = selectedCoopIds.includes(coop.id);
       const statusColor = coop.status === 'warning' ? COLORS.secondary
                         : coop.status === 'critical' ? COLORS.error
                         : COLORS.statusHealthy;
@@ -67,10 +130,14 @@ const CoopSelector = ({ coops, selectedCoopIds, onToggle }) => (
         >
           <View style={[styles.coopStatusDot, { backgroundColor: statusColor }]} />
           <View style={styles.coopSelectorInfo}>
-            <Text style={[styles.coopSelectorName, isSelected && { color: COLORS.primary }]}>{coop.name}</Text>
+            <Text style={[styles.coopSelectorName, isSelected && { color: COLORS.primary }]}>
+              {coop.name}
+            </Text>
             <Text style={styles.coopSelectorSector}>{coop.sector}</Text>
           </View>
-          <Text style={styles.coopSelectorPop}>{coop.population?.toLocaleString('fr-FR')} oiseaux</Text>
+          <Text style={styles.coopSelectorPop}>
+            {coop.population?.toLocaleString('fr-FR')} oiseaux
+          </Text>
           <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
             {isSelected && <MaterialIcons name="check" size={14} color={COLORS.white} />}
           </View>
@@ -81,7 +148,7 @@ const CoopSelector = ({ coops, selectedCoopIds, onToggle }) => (
 );
 
 // ─────────────────────────────────────────
-// 🧩 MODAL APPROBATION COMPTE PENDING
+// MODAL APPROBATION
 // ─────────────────────────────────────────
 const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) => {
   const [selectedCoopIds, setSelectedCoopIds] = useState([]);
@@ -89,7 +156,7 @@ const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) =>
 
   React.useEffect(() => {
     if (visible) setSelectedCoopIds([]);
-  }, [visible, user]);
+  }, [visible]);
 
   const toggleCoop = (id) =>
     setSelectedCoopIds((prev) =>
@@ -97,15 +164,17 @@ const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) =>
     );
 
   const handleApprove = async () => {
+    if (!user?.id) return;
     setLoading(true);
     await onApprove(user.id, selectedCoopIds);
     setLoading(false);
   };
 
   const handleReject = () => {
+    if (!user?.id) return;
     Alert.alert(
       'Refuser la demande',
-      `Êtes-vous sûr de vouloir refuser le compte de "${user?.name}" ? Cette action est irréversible.`,
+      `Êtes-vous sûr de vouloir refuser le compte de "${user.name}" ?`,
       [
         { text: 'Annuler', style: 'cancel' },
         { text: 'Refuser', style: 'destructive', onPress: () => onReject(user.id) },
@@ -120,6 +189,7 @@ const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) =>
       <KeyboardAvoidingView style={styles.modalContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
         <View style={styles.formSheet}>
+          <View style={styles.formSheetHandle} />
           <View style={styles.formSheetHeader}>
             <View>
               <Text style={styles.formSheetTitle}>Demande de compte</Text>
@@ -131,7 +201,6 @@ const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) =>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {/* Infos éleveur */}
             <View style={styles.pendingUserCard}>
               <View style={styles.pendingAvatarBox}>
                 <Text style={styles.avatarInitials}>
@@ -148,7 +217,6 @@ const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) =>
               </View>
             </View>
 
-            {/* Sélection des coops */}
             <View style={styles.formField}>
               <View style={styles.coopSelectorHeader}>
                 <Text style={styles.formLabel}>Affecter à un poulailler</Text>
@@ -160,7 +228,7 @@ const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) =>
                   </View>
                 )}
               </View>
-              <Text style={styles.formHint}>Optionnel — vous pouvez affecter les poulaillers plus tard.</Text>
+              <Text style={styles.formHint}>Optionnel — vous pouvez affecter plus tard.</Text>
               {coops.length === 0 ? (
                 <View style={styles.noCoopsBox}>
                   <MaterialIcons name="home-work" size={32} color={COLORS.outlineVariant} />
@@ -171,7 +239,6 @@ const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) =>
               )}
             </View>
 
-            {/* Boutons */}
             <View style={styles.approveButtons}>
               <TouchableOpacity style={styles.rejectBtn} onPress={handleReject} activeOpacity={0.8}>
                 <MaterialIcons name="person-remove" size={17} color={COLORS.error} />
@@ -180,14 +247,12 @@ const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) =>
               <TouchableOpacity
                 style={[styles.approveBtn, loading && { opacity: 0.7 }]}
                 onPress={handleApprove}
-                activeOpacity={0.85}
                 disabled={loading}
               >
                 <MaterialIcons name="how-to-reg" size={17} color={COLORS.white} />
                 <Text style={styles.approveBtnText}>{loading ? 'Validation...' : 'Approuver'}</Text>
               </TouchableOpacity>
             </View>
-            <View style={{ height: SPACING['3xl'] }} />
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -196,16 +261,17 @@ const ApproveModal = ({ visible, user, coops, onClose, onApprove, onReject }) =>
 };
 
 // ─────────────────────────────────────────
-// 🧩 MODAL FORMULAIRE UTILISATEUR
+// MODAL FORMULAIRE UTILISATEUR
 // ─────────────────────────────────────────
-const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
+const UserFormModal = ({ visible, user, coops, onClose, onSave, myRole }) => {
   const isEdit = !!user;
-  const [name,            setName]            = useState('');
-  const [email,           setEmail]           = useState('');
-  const [role,            setRole]            = useState('OPERATOR');
-  const [isActive,        setIsActive]        = useState(true);
+  const assignableRoles = getAssignableRoles(myRole);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('OPERATOR');
+  const [isActive, setIsActive] = useState(true);
   const [selectedCoopIds, setSelectedCoopIds] = useState([]);
-  const [errors,          setErrors]          = useState({});
+  const [errors, setErrors] = useState({});
 
   React.useEffect(() => {
     if (visible) {
@@ -213,7 +279,12 @@ const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
       setEmail(user?.email || '');
       setRole(user?.roleBadgeType || 'OPERATOR');
       setIsActive(user?.isActive ?? true);
-      setSelectedCoopIds(user?.assignedCoops?.map((c) => c.id).filter(Boolean) || []);
+      setSelectedCoopIds(
+        (user?.assignedCoops || [])
+          .filter(Boolean)
+          .map((c) => c?.id)
+          .filter(Boolean)
+      );
       setErrors({});
     }
   }, [visible, user]);
@@ -225,9 +296,11 @@ const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
 
   const validate = () => {
     const e = {};
-    if (!name.trim())  e.name  = 'Le nom est requis';
-    if (!email.trim()) e.email = "L'email est requis";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Email invalide';
+    if (!name.trim()) e.name = 'Le nom est requis';
+    if (!isEdit) {
+      if (!email.trim()) e.email = "L'email est requis";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Email invalide';
+    }
     return e;
   };
 
@@ -235,7 +308,7 @@ const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
     const e = validate();
     if (Object.keys(e).length > 0) { setErrors(e); return; }
     const assignedCoops = coops
-      .filter((c) => c && selectedCoopIds.includes(c.id))
+      .filter((c) => c?.id && selectedCoopIds.includes(c.id))
       .map((c) => ({ id: c.id, name: c.name }));
     onSave({ id: user?.id, name: name.trim(), email: email.trim(), roleBadgeType: role, isActive, assignedCoops });
   };
@@ -245,6 +318,7 @@ const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
       <KeyboardAvoidingView style={styles.modalContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={onClose} />
         <View style={styles.formSheet}>
+          <View style={styles.formSheetHandle} />
           <View style={styles.formSheetHeader}>
             <Text style={styles.formSheetTitle}>{isEdit ? "Modifier l'utilisateur" : 'Ajouter un utilisateur'}</Text>
             <TouchableOpacity onPress={onClose} style={styles.formSheetClose}>
@@ -260,9 +334,8 @@ const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
                 onChangeText={(t) => { setName(t); setErrors((e) => ({ ...e, name: '' })); }}
                 placeholder="Jean Dupont"
                 placeholderTextColor={COLORS.outlineVariant}
-                autoCapitalize="words"
               />
-              {errors.name ? <Text style={styles.formError}>{errors.name}</Text> : null}
+              {errors.name && <Text style={styles.formError}>{errors.name}</Text>}
             </View>
             {!isEdit && (
               <View style={styles.formField}>
@@ -272,11 +345,10 @@ const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
                   value={email}
                   onChangeText={(t) => { setEmail(t); setErrors((e) => ({ ...e, email: '' })); }}
                   placeholder="jean@poulia.com"
-                  placeholderTextColor={COLORS.outlineVariant}
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
-                {errors.email ? <Text style={styles.formError}>{errors.email}</Text> : null}
+                {errors.email && <Text style={styles.formError}>{errors.email}</Text>}
               </View>
             )}
             <View style={styles.formField}>
@@ -302,12 +374,11 @@ const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Rôle</Text>
               <View style={styles.rolesGrid}>
-                {ROLES.map((r) => (
+                {assignableRoles.map((r) => (
                   <TouchableOpacity
                     key={r.key}
                     style={[styles.rolePill, role === r.key && { backgroundColor: r.bg, borderColor: r.color }]}
                     onPress={() => setRole(r.key)}
-                    activeOpacity={0.8}
                   >
                     <View style={[styles.rolePillDot, { backgroundColor: r.color }]} />
                     <Text style={[styles.rolePillText, role === r.key && { color: r.color, fontWeight: FONT_WEIGHTS.bold }]}>
@@ -324,20 +395,14 @@ const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
                   <Text style={styles.formLabel}>Compte actif</Text>
                   <Text style={styles.formSwitchSubtitle}>L'utilisateur peut se connecter</Text>
                 </View>
-                <Switch
-                  value={isActive}
-                  onValueChange={setIsActive}
-                  trackColor={{ false: COLORS.surfaceContainerHigh, true: COLORS.primary + '70' }}
-                  thumbColor={COLORS.white}
-                  ios_backgroundColor={COLORS.surfaceContainerHigh}
-                />
+                <Switch value={isActive} onValueChange={setIsActive} />
               </View>
             </View>
             <View style={styles.formButtons}>
-              <TouchableOpacity style={styles.cancelFormBtn} onPress={onClose} activeOpacity={0.8}>
+              <TouchableOpacity style={styles.cancelFormBtn} onPress={onClose}>
                 <Text style={styles.cancelFormBtnText}>Annuler</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveFormBtn} onPress={handleSave} activeOpacity={0.85}>
+              <TouchableOpacity style={styles.saveFormBtn} onPress={handleSave}>
                 <MaterialIcons name={isEdit ? 'save' : 'person-add'} size={18} color={COLORS.white} />
                 <Text style={styles.saveFormBtnText}>{isEdit ? 'Enregistrer' : 'Ajouter'}</Text>
               </TouchableOpacity>
@@ -350,25 +415,25 @@ const UserFormModal = ({ visible, user, coops, onClose, onSave }) => {
 };
 
 // ─────────────────────────────────────────
-// 🧩 USER CARD
+// USER CARD
 // ─────────────────────────────────────────
 const UserCard = ({ user, currentUser, onEdit, onDelete, onToggle }) => {
-  // ✅ Comparer en String pour éviter les mismatches _id vs id
-  const isSelf = !!(
-    user?.id && currentUser?.id &&
-    String(user.id) === String(currentUser.id)
-  );
+  if (!user?.id) return null;
 
-  if (!user) return null;
+  const { canEdit, canToggle, canDelete, isSelf } = getPermissions(currentUser, user);
+  const isProtected = !canEdit && !canToggle && !canDelete; // Admin/SuperAdmin qu'on ne peut pas toucher
 
   return (
-    <View style={styles.userCard}>
+    <View style={[styles.userCard, !user.isActive && styles.userCardInactive]}>
+      {/* Bande latérale statut */}
+      <View style={[styles.userCardAccent, { backgroundColor: user.isActive ? COLORS.statusHealthy : COLORS.error }]} />
+
       <View style={styles.userCardLeft}>
         <View style={styles.avatarWrapper}>
           {user.avatar ? (
             <Image source={{ uri: user.avatar }} style={styles.avatar} />
           ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
+            <View style={[styles.avatar, styles.avatarFallback, !user.isActive && styles.avatarFallbackInactive]}>
               <Text style={styles.avatarInitials}>
                 {user.name?.split(' ').map((n) => n[0]).join('').slice(0, 2) || '??'}
               </Text>
@@ -376,53 +441,76 @@ const UserCard = ({ user, currentUser, onEdit, onDelete, onToggle }) => {
           )}
           <View style={[styles.presenceDot, { backgroundColor: user.isOnline ? COLORS.statusHealthy : COLORS.outlineVariant }]} />
         </View>
+
         <View style={styles.userInfo}>
           <View style={styles.userNameRow}>
-            <Text style={styles.userName}>{user.name}</Text>
+            <Text style={[styles.userName, !user.isActive && styles.userNameInactive]}>{user.name}</Text>
             {isSelf && (
               <View style={styles.selfBadge}>
                 <Text style={styles.selfBadgeText}>Moi</Text>
               </View>
             )}
+            {/* Cadenas visible si on n'a aucun droit sur cet utilisateur */}
+            {isProtected && !isSelf && (
+              <View style={styles.protectedBadge}>
+                <MaterialIcons name="lock" size={10} color="#7C3AED" />
+                <Text style={styles.protectedBadgeText}>Protégé</Text>
+              </View>
+            )}
           </View>
           <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
-          {user.assignedCoops?.length > 0 && (
+
+          {user.assignedCoops?.filter(Boolean).length > 0 && (
             <View style={styles.assignedCoopsRow}>
               <MaterialIcons name="home-work" size={12} color={COLORS.primary} />
               <Text style={styles.assignedCoopsText} numberOfLines={1}>
-                {user.assignedCoops.map((c) => c.name).join(', ')}
+                {user.assignedCoops.filter(Boolean).map((c) => c?.name).filter(Boolean).join(', ')}
               </Text>
             </View>
           )}
+
           <View style={styles.userMetaRow}>
             <RoleBadge roleKey={user.roleBadgeType} />
-            <View style={[styles.statusDot, { backgroundColor: user.isActive ? COLORS.statusHealthy : COLORS.error }]} />
-            <Text style={[styles.statusText, { color: user.isActive ? COLORS.statusHealthy : COLORS.error }]}>
-              {user.isActive ? 'Actif' : 'Suspendu'}
-            </Text>
+            <View style={styles.statusPill}>
+              <View style={[styles.statusDot, { backgroundColor: user.isActive ? COLORS.statusHealthy : COLORS.error }]} />
+              <Text style={[styles.statusText, { color: user.isActive ? COLORS.statusHealthy : COLORS.error }]}>
+                {user.isActive ? 'Actif' : 'Suspendu'}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
+
       <View style={styles.userActions}>
-        <Switch
-          value={!!user.isActive}
-          onValueChange={() => !isSelf && onToggle(user.id)}
-          trackColor={{ false: COLORS.surfaceContainerHigh, true: COLORS.primary + '70' }}
-          thumbColor={COLORS.white}
-          ios_backgroundColor={COLORS.surfaceContainerHigh}
-          disabled={isSelf}
-          style={styles.switch}
-        />
-        <TouchableOpacity style={styles.actionBtn} onPress={() => onEdit(user)} activeOpacity={0.8}>
-          <MaterialIcons name="edit" size={18} color={COLORS.primary} />
-        </TouchableOpacity>
+        {/* Switch : visible seulement si on peut toggler */}
+        {canToggle ? (
+          <Switch
+            value={!!user.isActive}
+            onValueChange={() => onToggle(user.id)}
+            trackColor={{ false: COLORS.errorContainer, true: COLORS.statusHealthy + '40' }}
+            thumbColor={user.isActive ? COLORS.statusHealthy : COLORS.error}
+          />
+        ) : (
+          // Espace vide pour garder l'alignement
+          <View style={styles.switchPlaceholder} />
+        )}
+
+        {/* Bouton Modifier */}
         <TouchableOpacity
-          style={[styles.actionBtn, styles.deleteBtn, isSelf && styles.actionBtnDisabled]}
-          onPress={() => !isSelf && onDelete(user)}
-          activeOpacity={isSelf ? 1 : 0.8}
-          disabled={isSelf}
+          style={[styles.actionBtn, !canEdit && styles.actionBtnDisabled]}
+          onPress={() => canEdit && onEdit(user)}
+          disabled={!canEdit}
         >
-          <MaterialIcons name="delete-outline" size={18} color={isSelf ? COLORS.outlineVariant : COLORS.error} />
+          <MaterialIcons name="edit" size={18} color={canEdit ? COLORS.primary : COLORS.outlineVariant} />
+        </TouchableOpacity>
+
+        {/* Bouton Supprimer */}
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.deleteBtn, !canDelete && styles.actionBtnDisabled]}
+          onPress={() => canDelete && onDelete(user)}
+          disabled={!canDelete}
+        >
+          <MaterialIcons name="delete-outline" size={18} color={canDelete ? COLORS.error : COLORS.outlineVariant} />
         </TouchableOpacity>
       </View>
     </View>
@@ -430,10 +518,10 @@ const UserCard = ({ user, currentUser, onEdit, onDelete, onToggle }) => {
 };
 
 // ─────────────────────────────────────────
-// 🧩 PENDING USER CARD
+// PENDING USER CARD
 // ─────────────────────────────────────────
 const PendingUserCard = ({ user, onApprove, onReject }) => {
-  if (!user) return null;
+  if (!user?.id) return null;
   return (
     <View style={styles.pendingCard}>
       <View style={styles.pendingCardLeft}>
@@ -444,7 +532,7 @@ const PendingUserCard = ({ user, onApprove, onReject }) => {
         </View>
         <View style={styles.userInfo}>
           <Text style={styles.userName}>{user.name}</Text>
-          <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
+          <Text style={styles.userEmail}>{user.email}</Text>
           <View style={styles.pendingChip}>
             <MaterialIcons name="schedule" size={11} color={COLORS.secondary} />
             <Text style={styles.pendingChipText}>{user.lastSeen}</Text>
@@ -452,10 +540,10 @@ const PendingUserCard = ({ user, onApprove, onReject }) => {
         </View>
       </View>
       <View style={styles.pendingCardActions}>
-        <TouchableOpacity style={styles.pendingRejectBtn} onPress={() => onReject(user)} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.pendingRejectBtn} onPress={() => onReject(user)}>
           <MaterialIcons name="close" size={16} color={COLORS.error} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.pendingApproveBtn} onPress={() => onApprove(user)} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.pendingApproveBtn} onPress={() => onApprove(user)}>
           <MaterialIcons name="check" size={16} color={COLORS.white} />
           <Text style={styles.pendingApproveBtnText}>Valider</Text>
         </TouchableOpacity>
@@ -465,278 +553,210 @@ const PendingUserCard = ({ user, onApprove, onReject }) => {
 };
 
 // ─────────────────────────────────────────
-// 📱 USER MANAGEMENT SCREEN
+// FILTER PILL
+// ─────────────────────────────────────────
+const FilterPill = ({ label, active, onPress, count }) => (
+  <TouchableOpacity
+    style={[styles.filterPill, active && styles.filterPillActive]}
+    onPress={onPress}
+    activeOpacity={0.75}
+  >
+    <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{label}</Text>
+    {count !== undefined && count > 0 && (
+      <View style={[styles.filterPillCount, active && styles.filterPillCountActive]}>
+        <Text style={[styles.filterPillCountText, active && styles.filterPillCountTextActive]}>{count}</Text>
+      </View>
+    )}
+  </TouchableOpacity>
+);
+
+// ─────────────────────────────────────────
+// MAIN SCREEN
 // ─────────────────────────────────────────
 const UserManagementScreen = () => {
   const currentUser = useAppStore((s) => s.user);
-  console.log('[UMS-1] currentUser:', JSON.stringify(currentUser));
+  const myRole = currentUser?.roleBadgeType;
 
-  const { coops: rawCoops, fetchCoops } = USE_MOCK
-    ? { coops: [], fetchCoops: null }
-    : useCoops();
-  console.log('[UMS-2] rawCoops length:', rawCoops?.length);
+  // ── GUARD : OPERATOR n'a pas accès à cette page ──
+  if (myRole === 'OPERATOR') {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.topBar}>
+          <Text style={styles.topBarTitle}>Gestion Utilisateurs</Text>
+        </View>
+        <View style={styles.accessDenied}>
+          <MaterialIcons name="lock" size={56} color={COLORS.outlineVariant} />
+          <Text style={styles.accessDeniedTitle}>Accès refusé</Text>
+          <Text style={styles.accessDeniedText}>
+            Vous n'avez pas les droits nécessaires pour gérer les utilisateurs.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-  const coops = USE_MOCK
-    ? MOCK_COOPS.map(adaptCoopForSelector).filter(Boolean)
-    : (rawCoops || []).map(adaptCoopForSelector).filter(Boolean);
-  console.log('[UMS-3] coops adapted:', coops.length);
+  const { coops: rawCoops, fetchCoops } = USE_MOCK ? { coops: [], fetchCoops: null } : useCoops();
+  const { users: apiUsers, fetchUsers, createUser, updateUser, toggleUser, deleteUser, approveUser, rejectUser } =
+    USE_MOCK
+      ? { users: [], fetchUsers: null, createUser: null, updateUser: null, toggleUser: null, deleteUser: null, approveUser: null, rejectUser: null }
+      : useUsers();
 
-  const [mockUsers, setMockUsers] = useState(
-    MOCK_USERS.map((u) => ({
-      ...u,
-      email:        u.email || `${u.name.toLowerCase().replace(' ', '.')}@poulia.com`,
-      assignedCoops: u.assignedCoops || [],
-    }))
-  );
-  console.log('[UMS-4] mockUsers ok');
+  const coops = useMemo(() => {
+    const source = USE_MOCK ? MOCK_COOPS : (rawCoops || []);
+    return source.map(adaptCoopForSelector).filter(Boolean);
+  }, [rawCoops]);
 
-  const {
-    users: apiUsers, loading, fetchUsers,
-    createUser, updateUser, toggleUser, deleteUser,
-    approveUser, rejectUser,
-  } = USE_MOCK ? {
-    users: [], loading: false, fetchUsers: null,
-    createUser: null, updateUser: null, toggleUser: null, deleteUser: null,
-    approveUser: null, rejectUser: null,
-  } : useUsers();
-  console.log('[UMS-5] apiUsers:', apiUsers?.length);
-
-  const allUsers     = (USE_MOCK ? mockUsers : apiUsers).filter(Boolean);
-  console.log('[UMS-6] allUsers:', allUsers.length);
+  const allUsers = useMemo(() => {
+    const source = USE_MOCK
+      ? MOCK_USERS.map((u) => ({
+          ...u,
+          email: u.email || `${u.name.toLowerCase().replace(' ', '.')}@poulia.com`,
+          assignedCoops: u.assignedCoops || [],
+        }))
+      : (apiUsers || []);
+    return source.filter((u) => u?.id);
+  }, [apiUsers]);
 
   const pendingUsers = allUsers.filter((u) => u?.status === 'PENDING');
-  const activeUsers  = allUsers.filter((u) => u && u.status !== 'PENDING');
-  console.log('[UMS-7] pending:', pendingUsers.length, 'active:', activeUsers.length);
+  const activeUsers  = allUsers.filter((u) => u?.status !== 'PENDING');
 
-  // ... reste du code inchangé
+  const activeCount     = activeUsers.filter((u) => u.isActive).length;
+  const suspendedCount  = activeUsers.filter((u) => !u.isActive).length;
+  const adminCount      = activeUsers.filter((u) => u.roleBadgeType === 'ADMIN' || u.roleBadgeType === 'SUPER_ADMIN').length;
 
-  const [search,         setSearch]         = useState('');
-  const [filterRole,     setFilterRole]     = useState('ALL');
-  const [filterStatus,   setFilterStatus]   = useState('ALL');
-  const [modalVisible,   setModalVisible]   = useState(false);
-  const [editingUser,    setEditingUser]     = useState(null);
+  const [search, setSearch] = useState('');
+  const [filterRole, setFilterRole] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
   const [approveVisible, setApproveVisible] = useState(false);
-  const [approvingUser,  setApprovingUser]  = useState(null);
+  const [approvingUser, setApprovingUser] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
-      if (!USE_MOCK) {
-        if (fetchCoops) fetchCoops();
-        if (fetchUsers) fetchUsers();
-      }
-    }, [])
+      if (USE_MOCK) return;
+      Promise.all([fetchCoops?.(), fetchUsers?.()]).catch(console.error);
+    }, [fetchCoops, fetchUsers])
   );
-
-  const adminCount     = activeUsers.filter((u) => u.roleBadgeType === 'ADMIN').length;
-  const activeCount    = activeUsers.filter((u) => u.isActive).length;
-  const suspendedCount = activeUsers.filter((u) => !u.isActive).length;
 
   const filteredUsers = useMemo(() => {
     let result = activeUsers;
     if (search.trim()) {
       const q = search.toLowerCase();
-      result = result.filter((u) =>
-        u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q)
-      );
+      result = result.filter((u) => u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q));
     }
-    if (filterRole   !== 'ALL') result = result.filter((u) => u.roleBadgeType === filterRole);
-    if (filterStatus === 'ACTIVE')    result = result.filter((u) =>  u.isActive);
+    if (filterRole !== 'ALL') result = result.filter((u) => u.roleBadgeType === filterRole);
+    if (filterStatus === 'ACTIVE')    result = result.filter((u) => u.isActive);
     if (filterStatus === 'SUSPENDED') result = result.filter((u) => !u.isActive);
     return result;
   }, [activeUsers, search, filterRole, filterStatus]);
 
-  // ── Handlers Toggle ──
-  const handleToggle = USE_MOCK
-    ? (userId) => setMockUsers((prev) =>
-        prev.map((u) => u.id === userId ? { ...u, isActive: !u.isActive } : u)
-      )
-    : (userId) => toggleUser(userId);
-
-  // ── Handlers Add/Edit ──
+  // Handlers
   const handleAdd  = () => { setEditingUser(null); setModalVisible(true); };
   const handleEdit = (user) => { setEditingUser(user); setModalVisible(true); };
 
   const handleSave = USE_MOCK
-    ? (userData) => {
-        setMockUsers((prev) => {
-          const exists = prev.find((u) => u.id === userData.id);
-          const entry  = {
-            ...userData,
-            role:     getRoleConfig(userData.roleBadgeType).label,
-            status:   userData.isActive ? 'ACTIVE' : 'SUSPENDED',
-            lastSeen: 'Nouveau membre',
-            isOnline: false,
-            avatar:   editingUser?.avatar || null,
-          };
-          if (exists) return prev.map((u) => u.id === userData.id ? entry : u);
-          return [{ ...entry, id: `u${Date.now()}` }, ...prev];
-        });
-        setModalVisible(false);
-      }
+    ? (userData) => { console.log('Mock save', userData); setModalVisible(false); }
     : async (userData) => {
         const isEdit = !!editingUser;
-        const result = isEdit
-          ? await updateUser(editingUser.id, userData)
-          : await createUser(userData);
-        if (result.success) {
-          setModalVisible(false);
-          if (fetchCoops) fetchCoops();
-        } else {
-          Alert.alert('Erreur', result.message);
-        }
+        const result = isEdit ? await updateUser(editingUser?.id, userData) : await createUser(userData);
+        if (result?.success) { setModalVisible(false); fetchUsers?.(); }
+        else Alert.alert('Erreur', result?.message || 'Échec de l\'opération');
       };
 
-  // ── Handlers Approve ──
-  const handleOpenApprove = (user) => {
-    setApprovingUser(user);
-    setApproveVisible(true);
-  };
+  const handleOpenApprove = (user) => { setApprovingUser(user); setApproveVisible(true); };
 
   const handleApprove = USE_MOCK
-    ? (userId, selectedCoopIds) => {
-        const assignedCoops = MOCK_COOPS
-          .filter((c) => c && selectedCoopIds.includes(c.id))
-          .map((c) => ({ id: c.id, name: c.name }));
-        setMockUsers((prev) =>
-          prev.map((u) =>
-            u.id === userId
-              ? { ...u, status: 'ACTIVE', isActive: true, assignedCoops }
-              : u
-          )
-        );
-        setApproveVisible(false);
-        Alert.alert('✅ Compte approuvé', 'Le compte a été activé avec succès.');
-      }
+    ? () => setApproveVisible(false)
     : async (userId, selectedCoopIds) => {
         const result = await approveUser(userId, { cooperatives: selectedCoopIds });
-        if (result.success) {
-          setApproveVisible(false);
-          Alert.alert('✅ Compte approuvé', 'Le compte a été activé avec succès.');
-          if (fetchCoops) fetchCoops();
-        } else {
-          Alert.alert('Erreur', result.message);
-        }
+        if (result?.success) { setApproveVisible(false); fetchUsers?.(); }
+        else Alert.alert('Erreur', result?.message);
       };
 
   const handleRejectFromModal = USE_MOCK
-    ? (userId) => {
-        setMockUsers((prev) => prev.filter((u) => u.id !== userId));
-        setApproveVisible(false);
-        Alert.alert('Demande refusée', 'La demande a été supprimée.');
-      }
+    ? () => setApproveVisible(false)
     : async (userId) => {
         const result = await rejectUser(userId);
-        if (result.success) {
-          setApproveVisible(false);
-          Alert.alert('Demande refusée', 'La demande a été supprimée.');
-        } else {
-          Alert.alert('Erreur', result.message);
-        }
+        if (result?.success) setApproveVisible(false);
       };
 
   const handleRejectCard = (user) => {
-    Alert.alert(
-      'Refuser la demande',
-      `Êtes-vous sûr de vouloir refuser le compte de "${user.name}" ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Refuser',
-          style: 'destructive',
-          onPress: () => USE_MOCK
-            ? setMockUsers((prev) => prev.filter((u) => u.id !== user.id))
-            : rejectUser(user.id),
-        },
-      ]
-    );
+    if (!user?.id) return;
+    Alert.alert('Refuser', `Refuser le compte de "${user.name}" ?`, [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Refuser', style: 'destructive', onPress: () => (USE_MOCK ? null : rejectUser(user.id)) },
+    ]);
   };
 
-  // ── Handlers Delete ──
-  const handleDelete = USE_MOCK
-    ? (user) => {
-        if (String(user.id) === String(currentUser?.id)) {
-          Alert.alert('Action impossible', 'Vous ne pouvez pas supprimer votre propre compte.');
-          return;
-        }
-        if (user.roleBadgeType === 'ADMIN' && adminCount <= 1) {
-          Alert.alert('Action impossible', 'Il doit rester au moins un administrateur.');
-          return;
-        }
-        Alert.alert(
-          "Supprimer l'utilisateur",
-          `Êtes-vous sûr de vouloir supprimer "${user.name}" ?`,
-          [
-            { text: 'Annuler', style: 'cancel' },
-            { text: 'Supprimer', style: 'destructive', onPress: () => setMockUsers((prev) => prev.filter((u) => u.id !== user.id)) },
-          ]
-        );
-      }
-    : (user) => {
-        if (String(user.id) === String(currentUser?.id)) {
-          Alert.alert('Action impossible', 'Vous ne pouvez pas supprimer votre propre compte.');
-          return;
-        }
-        Alert.alert(
-          "Supprimer l'utilisateur",
-          `Êtes-vous sûr de vouloir supprimer "${user.name}" ?`,
-          [
-            { text: 'Annuler', style: 'cancel' },
-            {
-              text: 'Supprimer',
-              style: 'destructive',
-              onPress: async () => {
-                const result = await deleteUser(user.id);
-                if (!result.success) Alert.alert('Erreur', result.message);
-                if (fetchCoops) fetchCoops();
-              },
-            },
-          ]
-        );
-      };
+  const handleDelete = (user) => {
+    if (!user?.id || String(user.id) === String(currentUser?.id)) {
+      Alert.alert('Impossible', "Vous ne pouvez pas supprimer votre propre compte.");
+      return;
+    }
+    Alert.alert('Supprimer', `Supprimer "${user.name}" ?`, [
+      { text: 'Annuler' },
+      { text: 'Supprimer', style: 'destructive', onPress: () => (USE_MOCK ? null : deleteUser(user.id)) },
+    ]);
+  };
+
+  const handleToggle = USE_MOCK ? (id) => console.log('Toggle mock', id) : toggleUser;
+
+  const hasActiveFilters = search.trim() || filterRole !== 'ALL' || filterStatus !== 'ALL';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      {/* TOP BAR */}
       <View style={styles.topBar}>
-        <Text style={styles.topBarTitle}>Gestion des Utilisateurs</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={handleAdd} activeOpacity={0.8}>
-          <MaterialIcons name="person-add" size={20} color={COLORS.white} />
-        </TouchableOpacity>
+        <View>
+          <Text style={styles.topBarTitle}>Gestion Utilisateurs</Text>
+          <Text style={styles.topBarSubtitle}>{allUsers.length} compte{allUsers.length !== 1 ? 's' : ''} au total</Text>
+        </View>
+        
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* ── KPI ── */}
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
+        {/* ── KPI ROW ── */}
         <View style={styles.kpiRow}>
-          <View style={[styles.kpiCard, { borderLeftColor: COLORS.statusHealthy }]}>
-            <Text style={styles.kpiLabel}>Actifs</Text>
-            <Text style={styles.kpiValue}>{activeCount}</Text>
-          </View>
-          <View style={[styles.kpiCard, { borderLeftColor: COLORS.error }]}>
-            <Text style={styles.kpiLabel}>Suspendus</Text>
-            <Text style={styles.kpiValue}>{suspendedCount}</Text>
-          </View>
-          <View style={[styles.kpiCard, { borderLeftColor: COLORS.primary }]}>
-            <Text style={styles.kpiLabel}>Total</Text>
-            <Text style={styles.kpiValue}>{activeUsers.length}</Text>
-          </View>
-          {pendingUsers.length > 0 && (
-            <View style={[styles.kpiCard, { borderLeftColor: COLORS.secondary }]}>
-              <Text style={styles.kpiLabel}>En attente</Text>
-              <Text style={[styles.kpiValue, { color: COLORS.secondary }]}>{pendingUsers.length}</Text>
-            </View>
-          )}
+          <KpiCard
+            icon="pending-actions"
+            label="En attente"
+            value={pendingUsers.length}
+            color={pendingUsers.length > 0 ? COLORS.secondary : COLORS.onSurfaceVariant}
+            bg={pendingUsers.length > 0 ? COLORS.secondary + '18' : COLORS.surfaceContainer}
+          />
+          <KpiCard
+            icon="check-circle"
+            label="Actifs"
+            value={activeCount}
+            color={COLORS.statusHealthy}
+            bg={COLORS.statusHealthy + '18'}
+          />
+          <KpiCard
+            icon="block"
+            label="Suspendus"
+            value={suspendedCount}
+            color={suspendedCount > 0 ? COLORS.error : COLORS.onSurfaceVariant}
+            bg={suspendedCount > 0 ? COLORS.errorContainer : COLORS.surfaceContainer}
+          />
+          <KpiCard
+            icon="admin-panel-settings"
+            label="Admins"
+            value={adminCount}
+            color={COLORS.primary}
+            bg={COLORS.primary + '18'}
+          />
         </View>
 
-        {/* ── Section PENDING ── */}
+        {/* ── PENDING SECTION ── */}
         {pendingUsers.length > 0 && (
           <View style={styles.pendingSection}>
             <View style={styles.pendingSectionHeader}>
               <View style={styles.pendingSectionTitleRow}>
-                <MaterialIcons name="pending-actions" size={18} color={COLORS.secondary} />
+                <View style={styles.pendingPulse}>
+                  <MaterialIcons name="schedule" size={16} color={COLORS.secondary} />
+                </View>
                 <Text style={styles.pendingSectionTitle}>Demandes en attente</Text>
               </View>
               <View style={styles.pendingCountBadge}>
@@ -745,77 +765,90 @@ const UserManagementScreen = () => {
             </View>
             <View style={styles.pendingList}>
               {pendingUsers.map((user) => (
-                <PendingUserCard
-                  key={user.id}
-                  user={user}
-                  onApprove={handleOpenApprove}
-                  onReject={handleRejectCard}
-                />
+                <PendingUserCard key={user.id} user={user} onApprove={handleOpenApprove} onReject={handleRejectCard} />
               ))}
             </View>
           </View>
         )}
 
-        {/* ── Recherche ── */}
+        {/* ── SEARCH ── */}
         <View style={styles.searchWrapper}>
-          <MaterialIcons name="search" size={20} color={COLORS.outline} />
+          <MaterialIcons name="search" size={20} color={COLORS.onSurfaceVariant} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Rechercher par nom ou email..."
-            placeholderTextColor={COLORS.onSurfaceVariant}
+            placeholder="Rechercher un utilisateur…"
+            placeholderTextColor={COLORS.outlineVariant}
             value={search}
             onChangeText={setSearch}
+            returnKeyType="search"
           />
           {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <MaterialIcons name="close" size={18} color={COLORS.outline} />
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <MaterialIcons name="cancel" size={18} color={COLORS.outlineVariant} />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* ── Filtres ── */}
+        {/* ── FILTERS ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersRow}>
-          {[
-            { key: 'ALL',       label: 'Tous' },
-            { key: 'ACTIVE',    label: 'Actifs' },
-            { key: 'SUSPENDED', label: 'Suspendus' },
-          ].map((f) => (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.filterPill, filterStatus === f.key && styles.filterPillActive]}
-              onPress={() => setFilterStatus(f.key)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.filterPillText, filterStatus === f.key && styles.filterPillTextActive]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {/* Statut */}
+          <FilterPill label="Tous" active={filterStatus === 'ALL'} onPress={() => setFilterStatus('ALL')} />
+          <FilterPill
+            label="Actifs"
+            active={filterStatus === 'ACTIVE'}
+            onPress={() => setFilterStatus('ACTIVE')}
+            count={activeCount}
+          />
+          <FilterPill
+            label="Suspendus"
+            active={filterStatus === 'SUSPENDED'}
+            onPress={() => setFilterStatus('SUSPENDED')}
+            count={suspendedCount}
+          />
+
           <View style={styles.filterSep} />
-          {[{ key: 'ALL', label: 'Tous rôles' }, ...ROLES.map((r) => ({ key: r.key, label: r.label }))].map((f) => (
-            <TouchableOpacity
-              key={f.key + '_role'}
-              style={[styles.filterPill, filterRole === f.key && styles.filterPillActive]}
-              onPress={() => setFilterRole(f.key)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.filterPillText, filterRole === f.key && styles.filterPillTextActive]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
+
+          {/* Rôle */}
+          <FilterPill label="Tous rôles" active={filterRole === 'ALL'} onPress={() => setFilterRole('ALL')} />
+          {ROLES.map((r) => (
+            <FilterPill
+              key={r.key}
+              label={r.label}
+              active={filterRole === r.key}
+              onPress={() => setFilterRole(r.key)}
+              count={activeUsers.filter((u) => u.roleBadgeType === r.key).length}
+            />
           ))}
         </ScrollView>
 
-        {/* ── Liste utilisateurs actifs ── */}
+        {/* ── LISTE HEADER ── */}
+        <View style={styles.listHeader}>
+          <Text style={styles.listHeaderLabel}>
+            {filteredUsers.length} utilisateur{filteredUsers.length !== 1 ? 's' : ''}
+            {hasActiveFilters ? ' trouvé' + (filteredUsers.length !== 1 ? 's' : '') : ''}
+          </Text>
+          {hasActiveFilters && (
+            <TouchableOpacity
+              onPress={() => { setSearch(''); setFilterRole('ALL'); setFilterStatus('ALL'); }}
+              style={styles.clearFiltersBtn}
+            >
+              <MaterialIcons name="filter-alt-off" size={14} color={COLORS.primary} />
+              <Text style={styles.clearFiltersBtnText}>Effacer</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ── USER LIST ── */}
         {filteredUsers.length === 0 ? (
           <View style={styles.emptyState}>
-            <MaterialIcons name="person-off" size={48} color={COLORS.outlineVariant} />
-            <Text style={styles.emptyTitle}>Aucun utilisateur trouvé</Text>
+            <MaterialIcons name="manage-search" size={52} color={COLORS.outlineVariant} />
+            <Text style={styles.emptyTitle}>Aucun résultat</Text>
+            <Text style={styles.emptySubtitle}>Modifiez vos filtres ou votre recherche</Text>
             <TouchableOpacity
               style={styles.emptyResetBtn}
               onPress={() => { setSearch(''); setFilterRole('ALL'); setFilterStatus('ALL'); }}
             >
-              <Text style={styles.emptyResetText}>Réinitialiser</Text>
+              <Text style={styles.emptyResetText}>Réinitialiser les filtres</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -833,7 +866,7 @@ const UserManagementScreen = () => {
           </View>
         )}
 
-        <View style={{ height: LAYOUT.bottomNavHeight + SPACING['2xl'] }} />
+        <View style={{ height: SPACING['4xl'] }} />
       </ScrollView>
 
       <UserFormModal
@@ -842,15 +875,15 @@ const UserManagementScreen = () => {
         coops={coops}
         onClose={() => setModalVisible(false)}
         onSave={handleSave}
+        myRole={myRole}
       />
-
       <ApproveModal
         visible={approveVisible}
         user={approvingUser}
         coops={coops}
         onClose={() => setApproveVisible(false)}
-        onApprove={(userId, coopIds) => handleApprove(userId, coopIds)}
-        onReject={(userId) => handleRejectFromModal(userId)}
+        onApprove={handleApprove}
+        onReject={handleRejectFromModal}
       />
     </SafeAreaView>
   );
@@ -862,6 +895,7 @@ const UserManagementScreen = () => {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.surface },
 
+  // ── TOP BAR ──
   topBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -869,14 +903,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingHorizontal: SPACING['2xl'],
     paddingVertical: SPACING.lg,
-    height: LAYOUT.topBarHeight,
+    minHeight: LAYOUT.topBarHeight,
   },
   topBarTitle: {
     fontFamily: FONTS.manrope,
-    fontSize: FONT_SIZES.lg,
+    fontSize: FONT_SIZES.xl,
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.white,
     letterSpacing: -0.3,
+  },
+  topBarSubtitle: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.white + 'AA',
+    marginTop: 1,
   },
   addBtn: {
     flexDirection: 'row',
@@ -888,12 +928,18 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.full,
     ...SHADOWS.secondary,
   },
+  addBtnText: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.white,
+  },
 
-  scroll:        { flex: 1 },
+  scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: SPACING['2xl'], paddingTop: SPACING['2xl'], gap: SPACING.lg },
 
   // ── KPI ──
-  kpiRow: { flexDirection: 'row', gap: SPACING.md },
+  kpiRow: { flexDirection: 'row', gap: SPACING.sm },
   kpiCard: {
     flex: 1,
     backgroundColor: COLORS.surfaceContainerLow,
@@ -902,24 +948,32 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     ...SHADOWS.sm,
     alignItems: 'center',
+    gap: 4,
   },
-  kpiLabel: {
-    fontFamily: FONTS.inter,
-    fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: COLORS.onSurfaceVariant,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
+  kpiIconBox: {
+    width: 32, height: 32,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
   },
   kpiValue: {
     fontFamily: FONTS.manrope,
     fontSize: FONT_SIZES['2xl'],
     fontWeight: FONT_WEIGHTS.extraBold,
-    color: COLORS.primary,
+    lineHeight: 28,
+  },
+  kpiLabel: {
+    fontFamily: FONTS.inter,
+    fontSize: 9,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    textAlign: 'center',
   },
 
-  // ── Section PENDING ──
+  // ── PENDING SECTION ──
   pendingSection: {
     backgroundColor: 'rgba(254, 106, 52, 0.06)',
     borderRadius: RADIUS.xl,
@@ -934,6 +988,13 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   pendingSectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  pendingPulse: {
+    width: 28, height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.secondary + '20',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pendingSectionTitle: {
     fontFamily: FONTS.manrope,
     fontSize: FONT_SIZES.base,
@@ -942,8 +1003,9 @@ const styles = StyleSheet.create({
   },
   pendingCountBadge: {
     backgroundColor: COLORS.secondary,
-    width: 22, height: 22,
-    borderRadius: 11,
+    minWidth: 24, height: 24,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -955,7 +1017,6 @@ const styles = StyleSheet.create({
   },
   pendingList: { gap: SPACING.md },
 
-  // ── Pending Card ──
   pendingCard: {
     backgroundColor: COLORS.surfaceContainerLow,
     borderRadius: RADIUS.lg,
@@ -985,7 +1046,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semiBold,
   },
   pendingRejectBtn: {
-    width: 34, height: 34,
+    width: 36, height: 36,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.errorContainer,
     alignItems: 'center',
@@ -999,6 +1060,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     backgroundColor: COLORS.primary,
     borderRadius: RADIUS.md,
+    height: 36,
   },
   pendingApproveBtnText: {
     fontFamily: FONTS.inter,
@@ -1007,7 +1069,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
-  // ── Recherche ──
+  // ── SEARCH ──
   searchWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1015,6 +1077,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceContainer,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.lg,
+    borderWidth: 1.5,
+    borderColor: COLORS.outlineVariant + '40',
     ...SHADOWS.sm,
   },
   searchInput: {
@@ -1025,14 +1089,17 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.lg,
   },
 
-  // ── Filtres ──
-  filtersRow: { gap: SPACING.sm, paddingRight: SPACING['2xl'], alignItems: 'center' },
+  // ── FILTERS ──
+  filtersRow: { gap: SPACING.sm, alignItems: 'center', paddingRight: SPACING['2xl'] },
   filterPill: {
-    paddingHorizontal: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     backgroundColor: COLORS.surfaceContainerLow,
     borderRadius: RADIUS.full,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: COLORS.outlineVariant + '50',
   },
   filterPillActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
@@ -1043,22 +1110,78 @@ const styles = StyleSheet.create({
     color: COLORS.onSurfaceVariant,
   },
   filterPillTextActive: { color: COLORS.white, fontWeight: FONT_WEIGHTS.bold },
+  filterPillCount: {
+    backgroundColor: COLORS.outlineVariant + '40',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: RADIUS.full,
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  filterPillCountActive: { backgroundColor: COLORS.white + '30' },
+  filterPillCountText: {
+    fontFamily: FONTS.inter,
+    fontSize: 9,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.onSurfaceVariant,
+  },
+  filterPillCountTextActive: { color: COLORS.white },
   filterSep: {
     width: 1, height: 20,
     backgroundColor: COLORS.outlineVariant + '60',
     marginHorizontal: SPACING.xs,
   },
 
-  // ── User List ──
+  // ── LIST HEADER ──
+  listHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.xs,
+  },
+  listHeaderLabel: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semiBold,
+    color: COLORS.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  clearFiltersBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    backgroundColor: COLORS.primary + '15',
+    borderRadius: RADIUS.full,
+  },
+  clearFiltersBtnText: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.primary,
+  },
+
+  // ── USER CARD ──
   userList: { gap: SPACING.md },
   userCard: {
     backgroundColor: COLORS.surfaceContainerLow,
     borderRadius: RADIUS.lg,
     padding: SPACING.lg,
+    paddingLeft: SPACING.md,
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
+    overflow: 'hidden',
     ...SHADOWS.sm,
+  },
+  userCardInactive: { opacity: 0.75 },
+  userCardAccent: {
+    position: 'absolute',
+    left: 0, top: 0, bottom: 0,
+    width: 3,
+    borderRadius: RADIUS.sm,
   },
   userCardLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 },
   avatarWrapper: { width: 48, height: 48, position: 'relative' },
@@ -1073,6 +1196,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarFallbackInactive: { backgroundColor: COLORS.outlineVariant },
   avatarInitials: {
     fontFamily: FONTS.manrope,
     fontSize: FONT_SIZES.md,
@@ -1095,6 +1219,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.onSurface,
   },
+  userNameInactive: { color: COLORS.onSurfaceVariant },
   selfBadge: {
     backgroundColor: COLORS.primary + '20',
     paddingHorizontal: 6, paddingVertical: 1,
@@ -1116,7 +1241,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
     flex: 1,
   },
-  userMetaRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 2 },
+  userMetaRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: 3 },
   roleBadge: { paddingHorizontal: SPACING.sm, paddingVertical: 2, borderRadius: RADIUS.full },
   roleBadgeText: {
     fontFamily: FONTS.inter,
@@ -1125,10 +1250,20 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.surfaceContainer,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+  },
   statusDot:  { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.medium },
-  userActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  switch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
+
+  userActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+  switchPlaceholder: { width: 51, height: 31 }, // même taille qu'un Switch standard
   actionBtn: {
     width: 34, height: 34,
     borderRadius: RADIUS.md,
@@ -1139,16 +1274,64 @@ const styles = StyleSheet.create({
   deleteBtn:         { backgroundColor: COLORS.errorContainer },
   actionBtnDisabled: { opacity: 0.3 },
 
-  // ── Empty ──
-  emptyState: { alignItems: 'center', paddingVertical: SPACING['4xl'], gap: SPACING.md },
-  emptyTitle: {
+  protectedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#F5F3FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: '#7C3AED30',
+  },
+  protectedBadgeText: {
+    fontFamily: FONTS.inter,
+    fontSize: 9,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#7C3AED',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+
+  // ── ACCESS DENIED ──
+  accessDenied: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.md,
+    padding: SPACING['4xl'],
+  },
+  accessDeniedTitle: {
     fontFamily: FONTS.manrope,
     fontSize: FONT_SIZES.xl,
     fontWeight: FONT_WEIGHTS.bold,
     color: COLORS.onSurface,
   },
-  emptyResetBtn: {
+  accessDeniedText: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.onSurfaceVariant,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
+  // ── EMPTY STATE ──
+  emptyState: { alignItems: 'center', paddingVertical: SPACING['4xl'], gap: SPACING.sm },
+  emptyTitle: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.xl,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.onSurface,
     marginTop: SPACING.sm,
+  },
+  emptySubtitle: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.onSurfaceVariant,
+  },
+  emptyResetBtn: {
+    marginTop: SPACING.md,
     paddingHorizontal: SPACING['2xl'],
     paddingVertical: SPACING.md,
     backgroundColor: COLORS.primaryLight,
@@ -1161,7 +1344,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
-  // ── Modals ──
+  // ── MODAL ──
   modalContainer:  { flex: 1, justifyContent: 'flex-end' },
   modalBackdrop:   { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   formSheet: {
@@ -1169,8 +1352,16 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: RADIUS['3xl'],
     borderTopRightRadius: RADIUS['3xl'],
     padding: SPACING['2xl'],
+    paddingTop: SPACING.md,
     maxHeight: '92%',
     ...SHADOWS.xl,
+  },
+  formSheetHandle: {
+    width: 36, height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.outlineVariant,
+    alignSelf: 'center',
+    marginBottom: SPACING.lg,
   },
   formSheetHeader: {
     flexDirection: 'row',
@@ -1196,7 +1387,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceContainer,
   },
 
-  // ── Pending user card in modal ──
   pendingUserCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1216,7 +1406,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  pendingUserInfo: { flex: 1 },
+  pendingUserInfo:  { flex: 1 },
   pendingUserName: {
     fontFamily: FONTS.manrope,
     fontSize: FONT_SIZES.md,
@@ -1237,8 +1427,7 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
 
-  // ── Form fields ──
-  formField:       { marginBottom: SPACING.xl },
+  formField:    { marginBottom: SPACING.xl },
   formLabel: {
     fontFamily: FONTS.inter,
     fontSize: FONT_SIZES.xs,
@@ -1275,7 +1464,6 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.sm,
   },
 
-  // ── Coop selector ──
   coopSelectorHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1342,7 +1530,6 @@ const styles = StyleSheet.create({
   noCoopsBox: { alignItems: 'center', paddingVertical: SPACING['2xl'], gap: SPACING.sm },
   noCoopsText: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.sm, color: COLORS.onSurfaceVariant },
 
-  // ── Roles ──
   rolesGrid: { gap: SPACING.sm },
   rolePill: {
     flexDirection: 'row',
@@ -1363,7 +1550,6 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
 
-  // ── Form switch ──
   formSwitchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1379,7 +1565,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  // ── Form buttons ──
   formButtons: {
     flexDirection: 'row',
     gap: SPACING.md,
@@ -1417,7 +1602,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
-  // ── Approve modal buttons ──
   approveButtons: {
     flexDirection: 'row',
     gap: SPACING.md,

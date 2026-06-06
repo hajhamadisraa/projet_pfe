@@ -1,11 +1,4 @@
 // src/controllers/hooks/useActuators.js
-// ═══════════════════════════════════════════════════════════════
-//  Hook — Contrôle des actionneurs via MQTT
-//  Usage : const { actuators, sendCommand, setMode } = useActuators(coopId, mac, autoStates)
-//
-//  autoStates = { fan: true/false } — calculé par getAutoFanState dans EquipmentScreen
-//  Quand mode = 'auto', le hook envoie la commande automatiquement si l'état doit changer
-// ═══════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 import api from '../../models/services/apiService';
@@ -14,24 +7,31 @@ import { API } from '../../models/utils/constants';
 const SOCKET_URL = API.BASE_URL.replace('/api', '');
 
 // ─────────────────────────────────────────────────────────────
-//  État initial des actionneurs
+//  Modes persistés entre reconnexions Socket.IO
+//  Quand la socket se déconnecte/reconnecte, on garde le mode
+//  choisi par l'utilisateur (auto ou manuel)
 // ─────────────────────────────────────────────────────────────
-const defaultActuators = {
-  fan:        { on: false, mode: 'auto', loading: false },
-  heater:     { on: false, mode: 'auto', loading: false },
-  light:      { on: false, mode: 'auto', loading: false },
-  padCooling: { on: false, mode: 'auto', loading: false },
-  waterPump:  { on: false, mode: 'auto', loading: false },
+const persistedModes = {
+  fan:        'auto',
+  heater:     'auto',
+  light:      'auto',
+  padCooling: 'auto',
+  waterPump:  'auto',
 };
 
-// ─────────────────────────────────────────────────────────────
-//  autoStates = { fan: true/false, heater: true/false, ... }
-//  Ces valeurs sont calculées dans EquipmentScreen selon les
-//  seuils climatiques (getAutoFanState) et passées ici
-// ─────────────────────────────────────────────────────────────
+const makeDefault = () => ({
+  fan:        { on: false, mode: persistedModes.fan,        loading: false },
+  heater:     { on: false, mode: persistedModes.heater,     loading: false },
+  light:      { on: false, mode: persistedModes.light,      loading: false },
+  padCooling: { on: false, mode: persistedModes.padCooling, loading: false },
+  waterPump:  { on: false, mode: persistedModes.waterPump,  loading: false },
+});
+
 export default function useActuators(coopId, mac, autoStates = {}) {
-  const socketRef = useRef(null);
-  const [actuators, setActuators] = useState(defaultActuators);
+  const socketRef    = useRef(null);
+  const lastAutoSent = useRef({});   // ← évite le spam de commandes AUTO
+
+  const [actuators, setActuators] = useState(makeDefault);
   const [connected, setConnected] = useState(false);
 
   // ── Connexion Socket.IO ──────────────────────────────────────
@@ -48,7 +48,18 @@ export default function useActuators(coopId, mac, autoStates = {}) {
     socket.on('connect', () => {
       setConnected(true);
       socket.emit('join_coop', coopId);
-      console.log('[Actuators] Socket connecté, room rejointe :', coopId);
+      console.log('[Actuators] Socket connecté :', coopId);
+
+      // ✅ Restaurer les modes persistés après reconnexion
+      setActuators((prev) => {
+        const restored = { ...prev };
+        Object.keys(persistedModes).forEach((key) => {
+          if (restored[key]) {
+            restored[key] = { ...restored[key], mode: persistedModes[key] };
+          }
+        });
+        return restored;
+      });
     });
 
     socket.on('disconnect', () => {
@@ -56,9 +67,7 @@ export default function useActuators(coopId, mac, autoStates = {}) {
       console.log('[Actuators] Socket déconnecté');
     });
 
-    // ── Réception état réel des relais depuis l'ESP32 ──────────
-    // Émis par mqttService.js quand ESP32 publie coop/{MAC}/actuators
-    // Déclenché après chaque SET_RELAY + au démarrage de l'ESP32
+    // État réel des relais depuis ESP32
     socket.on('actuator_state', (data) => {
       if (data.mac !== mac) return;
       console.log('[Actuators] ✅ État reçu depuis ESP32 :', data);
@@ -72,32 +81,34 @@ export default function useActuators(coopId, mac, autoStates = {}) {
       }));
     });
 
-    // ── Réception changement de mode depuis l'app ──────────────
     socket.on('mode_state', (data) => {
       if (data.mac !== mac) return;
       setActuators((prev) => {
         const updated = { ...prev };
         if (data.target && updated[data.target]) {
           updated[data.target] = { ...updated[data.target], mode: data.mode, loading: false };
+          persistedModes[data.target] = data.mode;  // persister
         }
         return updated;
       });
     });
 
     return () => {
-      socket.emit('leave_coop', coopId);
-      socket.disconnect();
+      try {
+        socket.off('connect');
+        socket.off('disconnect');
+        socket.off('actuator_state');
+        socket.off('mode_state');
+        if (socket.connected) socket.emit('leave_coop', coopId);
+        socket.disconnect();
+      } catch (e) {}
     };
   }, [coopId, mac]);
 
   // ── Envoyer une commande SET_RELAY ───────────────────────────
   const sendCommand = useCallback(async (target, value) => {
-    if (!mac) {
-      console.warn('[Actuators] Pas de MAC — commande ignorée');
-      return;
-    }
+    if (!mac) return;
 
-    // Feedback immédiat dans l'UI
     setActuators((prev) => ({
       ...prev,
       [target]: { ...prev[target], loading: true },
@@ -105,21 +116,15 @@ export default function useActuators(coopId, mac, autoStates = {}) {
 
     try {
       await api.post(`/esp32/command/${mac}`, {
-        action: 'SET_RELAY',
-        target,
-        value,
+        action: 'SET_RELAY', target, value,
       });
       console.log(`[Actuators] Commande envoyée → ${target} = ${value}`);
-
-      // Mise à jour optimiste (l'état réel arrive ensuite via Socket.IO actuator_state)
       setActuators((prev) => ({
         ...prev,
         [target]: { ...prev[target], on: value, loading: false },
       }));
-
     } catch (err) {
       console.error('[Actuators] Erreur commande :', err.message);
-      // Retirer le loading sans changer l'état
       setActuators((prev) => ({
         ...prev,
         [target]: { ...prev[target], loading: false },
@@ -131,7 +136,13 @@ export default function useActuators(coopId, mac, autoStates = {}) {
   const setMode = useCallback(async (target, mode) => {
     if (!mac) return;
 
-    // Mise à jour UI immédiate
+    // ✅ Persister immédiatement pour survivre aux reconnexions
+    persistedModes[target] = mode;
+
+    // ✅ Réinitialiser lastAutoSent pour ce target
+    //    → permet à AUTO de renvoyer une commande si nécessaire
+    delete lastAutoSent.current[target];
+
     setActuators((prev) => ({
       ...prev,
       [target]: { ...prev[target], mode, loading: true },
@@ -139,9 +150,7 @@ export default function useActuators(coopId, mac, autoStates = {}) {
 
     try {
       await api.post(`/esp32/command/${mac}`, {
-        action: 'SET_MODE',
-        target,
-        value:  mode,
+        action: 'SET_MODE', target, value: mode,
       });
       console.log(`[Actuators] Mode ${target} → ${mode}`);
       setActuators((prev) => ({
@@ -157,15 +166,9 @@ export default function useActuators(coopId, mac, autoStates = {}) {
     }
   }, [mac]);
 
-  // ── Mode AUTO — exécution automatique des commandes ──────────
-  // Quand autoStates change (nouvelle température reçue via Socket.IO)
-  // → si un actionneur est en mode 'auto' et que son état doit changer
-  // → on envoie la commande automatiquement
-  //
-  // Exemple : T° passe de 26°C à 28°C
-  //   autoStates = { fan: true }
-  //   actuators.fan.mode = 'auto' && actuators.fan.on = false
-  //   → sendCommand('fan', true) → relais ON
+  // ── Mode AUTO — exécution automatique ───────────────────────
+  // ✅ Protection anti-spam : envoie la commande seulement si
+  //    l'état souhaité est DIFFÉRENT de la dernière commande AUTO envoyée
   useEffect(() => {
     if (!mac) return;
 
@@ -173,14 +176,25 @@ export default function useActuators(coopId, mac, autoStates = {}) {
       const actuator = actuators[target];
       if (!actuator) return;
 
-      if (actuator.mode === 'auto' && actuator.on !== shouldBeOn && !actuator.loading) {
-        console.log(`[Actuators] 🤖 AUTO : ${target} → ${shouldBeOn ? 'ON' : 'OFF'} (T° seuil atteint)`);
+      if (
+        actuator.mode === 'auto' &&
+        !actuator.loading &&
+        lastAutoSent.current[target] !== shouldBeOn  // ← nouveau : évite le spam
+      ) {
+        lastAutoSent.current[target] = shouldBeOn;
+        console.log(`[Actuators] 🤖 AUTO : ${target} → ${shouldBeOn ? 'ON' : 'OFF'}`);
+        // Dans le useEffect auto, avant sendCommand :
+// Pour waterPump, ne pas envoyer ON si on n'a pas de données réelles
+if (target === 'waterPump' && shouldBeOn && actuator.on === false) {
+    // Vérifier que ce n'est pas la valeur par défaut
+    // On fait confiance au firmware pour gérer le démarrage
+    console.log('[Actuators] waterPump AUTO ON ignoré — attente données réelles');
+    return;
+}
         sendCommand(target, shouldBeOn);
       }
     });
   }, [autoStates, mac]);
-  // Note : on exclut intentionnellement 'actuators' et 'sendCommand' des deps
-  // pour éviter une boucle infinie — on lit leur valeur courante via la closure
 
   return { actuators, connected, sendCommand, setMode };
 }

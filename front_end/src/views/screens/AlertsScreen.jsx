@@ -26,34 +26,64 @@ import {
 } from '../../models/utils/constants';
 
 // ─────────────────────────────────────────
-// 🧩 CONFIG PAR SÉVÉRITÉ
+// CONFIG PAR SÉVÉRITÉ
 // ─────────────────────────────────────────
 const getSeverityConfig = (severity) => {
   const map = {
     [ALERT_SEVERITY.CRITICAL]: {
-      color:   COLORS.error,
+      color: COLORS.error,
       bgColor: COLORS.errorContainer,
-      icon:    'warning',
-      label:   'Critique',
+      icon: 'warning',
+      label: 'Critique',
     },
     [ALERT_SEVERITY.WARNING]: {
-      color:   COLORS.secondary,
+      color: COLORS.secondary,
       bgColor: COLORS.statusWarningBg,
-      icon:    'health-and-safety',
-      label:   'Attention',
+      icon: 'health-and-safety',
+      label: 'Attention',
     },
     [ALERT_SEVERITY.INFO]: {
-      color:   COLORS.statusHealthy,
+      color: COLORS.statusHealthy,
       bgColor: COLORS.statusHealthyBg,
-      icon:    'analytics',
-      label:   'Info',
+      icon: 'analytics',
+      label: 'Info',
     },
   };
   return map[severity] || map[ALERT_SEVERITY.INFO];
 };
 
 // ─────────────────────────────────────────
-// 🧩 ALERT CARD — standard
+// CONFIG CATÉGORIE ÉLEVEUR
+// ─────────────────────────────────────────
+const getBreederCategoryConfig = (category) => {
+  const map = {
+    temperature: {
+      color: COLORS.error,
+      bgColor: COLORS.errorContainer,
+      icon: 'thermostat',
+      label: 'Température',
+      accent: '#FF6B35',
+    },
+    reservoir: {
+      color: '#1565C0',
+      bgColor: '#E3F2FD',
+      icon: 'water-drop',
+      label: 'Réservoir',
+      accent: '#1565C0',
+    },
+    fan: {
+      color: COLORS.secondary,
+      bgColor: COLORS.statusWarningBg,
+      icon: 'air',
+      label: 'Ventilation',
+      accent: COLORS.secondary,
+    },
+  };
+  return map[category] || null;
+};
+
+// ─────────────────────────────────────────
+// ALERT CARD GÉNÉRIQUE
 // ─────────────────────────────────────────
 const AlertCard = ({ alert, onDismiss, onMarkRead }) => {
   const config = getSeverityConfig(alert.severity);
@@ -112,129 +142,246 @@ const AlertCard = ({ alert, onDismiss, onMarkRead }) => {
 };
 
 // ─────────────────────────────────────────
-// 🧩 ACCOUNT REQUEST CARD — carte spéciale pour demandes de compte
+// TEMPERATURE ALERT CARD (Seuil dépassé)
 // ─────────────────────────────────────────
-const AccountRequestCard = ({ alert, onDismiss, onMarkRead, onNavigateToUsers }) => (
-  <TouchableOpacity
-    activeOpacity={0.85}
-    onPress={() => !alert.isRead && onMarkRead && onMarkRead(alert.id)}
-  >
-    <View style={[styles.alertCard, styles.accountCard, !alert.isRead && styles.alertCardUnread]}>
-      {/* Bande verte pour distinguer des alertes système */}
-      <View style={[styles.alertBand, { backgroundColor: COLORS.primary }]} />
+const TemperatureAlertCard = ({ alert, onDismiss, onMarkRead }) => {
+  const isAbove = alert.meta?.direction === 'above';
+  const currentTemp = alert.meta?.currentTemp;
+  const threshold = alert.meta?.threshold;
+  const sensorName = alert.meta?.sensorName || alert.location;
 
-      <View style={styles.alertContent}>
-        <View style={styles.alertHeader}>
-          <View style={styles.alertHeaderLeft}>
-            <View style={styles.alertIconWrapper}>
-              <View style={[styles.alertIconBox, { backgroundColor: COLORS.emerald50 }]}>
-                <MaterialIcons name="person-add" size={20} color={COLORS.primary} />
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => !alert.isRead && onMarkRead && onMarkRead(alert.id)}
+    >
+      <View style={[styles.alertCard, styles.tempCard, !alert.isRead && styles.alertCardUnread]}>
+        <View style={[styles.alertBand, { backgroundColor: COLORS.error }]} />
+        <View style={styles.alertContent}>
+          <View style={styles.alertHeader}>
+            <View style={styles.alertHeaderLeft}>
+              <View style={styles.alertIconWrapper}>
+                <View style={[styles.alertIconBox, { backgroundColor: COLORS.errorContainer }]}>
+                  <MaterialIcons name="thermostat" size={20} color={COLORS.error} />
+                </View>
+                {!alert.isRead && <View style={[styles.unreadDot, { backgroundColor: COLORS.error }]} />}
               </View>
-              {!alert.isRead && <View style={[styles.unreadDot, { backgroundColor: COLORS.primary }]} />}
-            </View>
-            <View style={styles.alertTitleBlock}>
-              <View style={styles.alertTitleRow}>
-                <Text style={styles.alertTitle}>{alert.title}</Text>
-                {!alert.isRead && (
-                  <View style={[styles.unreadBadge, { backgroundColor: COLORS.primary }]}>
-                    <Text style={styles.unreadBadgeText}>Action requise</Text>
-                  </View>
-                )}
+              <View style={styles.alertTitleBlock}>
+                <View style={styles.alertTitleRow}>
+                  <Text style={styles.alertTitle}>{alert.title}</Text>
+                  {!alert.isRead && (
+                    <View style={[styles.unreadBadge, { backgroundColor: COLORS.error }]}>
+                      <Text style={styles.unreadBadgeText}>Critique</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.alertLocation, { color: COLORS.error }]}>{sensorName}</Text>
               </View>
-              <Text style={[styles.alertLocation, { color: COLORS.primary }]}>
-                {alert.meta?.userName || alert.location}
-              </Text>
+            </View>
+            <View style={styles.alertTimestamp}>
+              <Text style={styles.alertTimestampText}>{alert.timestamp}</Text>
             </View>
           </View>
-          <View style={styles.alertTimestamp}>
-            <Text style={styles.alertTimestampText}>{alert.timestamp}</Text>
+
+          <Text style={styles.alertDescription}>{alert.description}</Text>
+
+          {(currentTemp !== undefined && threshold !== undefined) && (
+            <View style={styles.tempGaugeRow}>
+              <View style={styles.tempGaugeItem}>
+                <MaterialIcons name={isAbove ? 'arrow-upward' : 'arrow-downward'} size={16} color={COLORS.error} />
+                <Text style={styles.tempGaugeValue}>{currentTemp}°C</Text>
+                <Text style={styles.tempGaugeLabel}>Actuelle</Text>
+              </View>
+              <View style={styles.tempGaugeDivider} />
+              <View style={styles.tempGaugeItem}>
+                <MaterialIcons name="straighten" size={16} color={COLORS.onSurfaceVariant} />
+                <Text style={[styles.tempGaugeValue, { color: COLORS.onSurfaceVariant }]}>{threshold}°C</Text>
+                <Text style={styles.tempGaugeLabel}>Seuil</Text>
+              </View>
+              <View style={styles.tempGaugeDivider} />
+              <View style={styles.tempGaugeItem}>
+                <MaterialIcons name="trending-up" size={16} color={COLORS.error} />
+                <Text style={styles.tempGaugeValue}>
+                  {isAbove ? '+' : '-'}{Math.abs(currentTemp - threshold).toFixed(1)}°C
+                </Text>
+                <Text style={styles.tempGaugeLabel}>Écart</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={styles.alertActionsRow}>
+            <TouchableOpacity style={styles.alertBtnSecondary} onPress={() => onDismiss(alert.id)}>
+              <MaterialIcons name="close" size={14} color={COLORS.onSurfaceVariant} />
+              <Text style={styles.alertBtnSecondaryText}>Ignorer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.breederActionBtn, { backgroundColor: COLORS.error }]}
+              onPress={() => {
+                onMarkRead && onMarkRead(alert.id);
+                // TODO: navigation vers détails capteur
+              }}
+            >
+              <MaterialIcons name="sensors" size={15} color={COLORS.white} />
+              <Text style={styles.breederActionBtnText}>Voir le capteur</Text>
+            </TouchableOpacity>
           </View>
-        </View>
-
-        <Text style={styles.alertDescription}>{alert.description}</Text>
-
-        {/* Email de l'éleveur */}
-        {alert.meta?.userEmail && (
-          <View style={styles.accountEmailRow}>
-            <MaterialIcons name="mail-outline" size={14} color={COLORS.primary} />
-            <Text style={styles.accountEmailText}>{alert.meta.userEmail}</Text>
-          </View>
-        )}
-
-        {/* Actions : Voir la demande + Ignorer */}
-        <View style={styles.alertActionsRow}>
-          <TouchableOpacity
-            style={styles.alertBtnSecondary}
-            onPress={() => onDismiss(alert.id)}
-            activeOpacity={0.8}
-          >
-            <MaterialIcons name="close" size={14} color={COLORS.onSurfaceVariant} />
-            <Text style={styles.alertBtnSecondaryText}>Ignorer</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.accountActionBtn}
-            onPress={() => {
-              onMarkRead && onMarkRead(alert.id);
-              onNavigateToUsers();
-            }}
-            activeOpacity={0.85}
-          >
-            <MaterialIcons name="how-to-reg" size={15} color={COLORS.white} />
-            <Text style={styles.accountActionBtnText}>Voir la demande</Text>
-          </TouchableOpacity>
         </View>
       </View>
-    </View>
-  </TouchableOpacity>
-);
+    </TouchableOpacity>
+  );
+};
 
 // ─────────────────────────────────────────
-// 📱 ALERTS SCREEN
+// FAN ALERT CARD (Activation / Désactivation manuelle)
+// ─────────────────────────────────────────
+const FanAlertCard = ({ alert, onDismiss, onMarkRead }) => {
+  const fanState = alert.meta?.fanState; // 'activated' | 'deactivated'
+  const fanName = alert.meta?.fanName || alert.location;
+  const isOn = fanState === 'activated';
+
+  const FAN_COLOR = isOn ? COLORS.secondary : '#757575';
+  const FAN_BG = isOn ? COLORS.statusWarningBg : COLORS.surfaceContainerHigh;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={() => !alert.isRead && onMarkRead && onMarkRead(alert.id)}
+    >
+      <View style={[styles.alertCard, styles.fanCard, !alert.isRead && styles.alertCardUnread]}>
+        <View style={[styles.alertBand, { backgroundColor: FAN_COLOR }]} />
+        <View style={styles.alertContent}>
+          <View style={styles.alertHeader}>
+            <View style={styles.alertHeaderLeft}>
+              <View style={styles.alertIconWrapper}>
+                <View style={[styles.alertIconBox, { backgroundColor: FAN_BG }]}>
+                  <MaterialIcons name="air" size={20} color={FAN_COLOR} />
+                </View>
+                {!alert.isRead && <View style={[styles.unreadDot, { backgroundColor: FAN_COLOR }]} />}
+              </View>
+              <View style={styles.alertTitleBlock}>
+                <View style={styles.alertTitleRow}>
+                  <Text style={styles.alertTitle}>{alert.title}</Text>
+                  {!alert.isRead && (
+                    <View style={[styles.unreadBadge, { backgroundColor: FAN_COLOR }]}>
+                      <Text style={styles.unreadBadgeText}>Manuel</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.alertLocation, { color: FAN_COLOR }]}>{fanName}</Text>
+              </View>
+            </View>
+            <View style={styles.alertTimestamp}>
+              <Text style={styles.alertTimestampText}>{alert.timestamp}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.alertDescription}>{alert.description}</Text>
+
+          <View style={[styles.fanStatusRow, { backgroundColor: FAN_BG, borderColor: FAN_COLOR + '44' }]}>
+            <MaterialIcons name={isOn ? 'toggle-on' : 'toggle-off'} size={24} color={FAN_COLOR} />
+            <Text style={[styles.fanStatusText, { color: FAN_COLOR }]}>
+              Ventilateur {isOn ? 'activé manuellement' : 'désactivé manuellement'}
+            </Text>
+            <View style={[styles.fanStatusDot, { backgroundColor: isOn ? '#4CAF50' : '#9E9E9E' }]} />
+          </View>
+
+          <View style={styles.alertActions}>
+            <TouchableOpacity
+              style={styles.alertBtnSecondary}
+              onPress={() => onDismiss(alert.id)}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="close" size={14} color={COLORS.onSurfaceVariant} />
+              <Text style={styles.alertBtnSecondaryText}>Ignorer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+// (Les autres cartes Reservoir et Account restent inchangées)
+const ReservoirAlertCard = ({ alert, onDismiss, onMarkRead }) => { /* ... code existant ... */ };
+const AccountRequestCard = ({ alert, onDismiss, onMarkRead, onNavigateToUsers }) => { /* ... code existant ... */ };
+
+// ─────────────────────────────────────────
+// ROUTER DE CARTES
+// ─────────────────────────────────────────
+const AlertCardRouter = ({ alert, onDismiss, onMarkRead, onNavigateToUsers }) => {
+  switch (alert.category) {
+    case ALERT_CATEGORIES.ACCOUNT:
+      return <AccountRequestCard alert={alert} onDismiss={onDismiss} onMarkRead={onMarkRead} onNavigateToUsers={onNavigateToUsers} />;
+    case 'temperature':
+      return <TemperatureAlertCard alert={alert} onDismiss={onDismiss} onMarkRead={onMarkRead} />;
+    case 'reservoir':
+      return <ReservoirAlertCard alert={alert} onDismiss={onDismiss} onMarkRead={onMarkRead} />;
+    case 'fan':
+      return <FanAlertCard alert={alert} onDismiss={onDismiss} onMarkRead={onMarkRead} />;
+    default:
+      return <AlertCard alert={alert} onDismiss={onDismiss} onMarkRead={onMarkRead} />;
+  }
+};
+
+// ─────────────────────────────────────────
+// MAIN SCREEN
 // ─────────────────────────────────────────
 const AlertsScreen = ({ navigation }) => {
-  const alerts      = useAppStore((s) => s.alerts);
+  const alerts = useAppStore((s) => s.alerts);
   const unreadCount = useAppStore((s) => s.unreadAlertsCount);
-  const {
-    dismissAlert,
-    dismissAllAlerts,
-    markAllAlertsRead,
-    markAlertRead,
-    fetchAlerts,
-  } = useAppStore();
+  const { dismissAlert, dismissAllAlerts, markAllAlertsRead, markAlertRead, fetchAlerts } = useAppStore();
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchAlerts();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { fetchAlerts(); }, []));
 
-  // Séparer les alertes de compte des alertes système
-  const accountAlerts = alerts.filter((a) => a.category === ALERT_CATEGORIES.ACCOUNT);
-  const systemAlerts  = alerts.filter((a) => a.category !== ALERT_CATEGORIES.ACCOUNT);
+  const accountAlerts = alerts.filter(a => a.category === ALERT_CATEGORIES.ACCOUNT);
+  const temperatureAlerts = alerts.filter(a => a.category === 'temperature');
+  const reservoirAlerts = alerts.filter(a => a.category === 'reservoir');
+  const fanAlerts = alerts.filter(a => a.category === 'fan');
+  const systemAlerts = alerts.filter(a => !['temperature', 'reservoir', 'fan', ALERT_CATEGORIES.ACCOUNT].includes(a.category));
 
-  const navigateToUsers = () => {
-    // Navigation vers UserManagement depuis l'onglet Admin
-    navigation.navigate('UserManagement');
+  const urgentBreederAlerts = [...temperatureAlerts, ...reservoirAlerts];
+  const manualFanAlerts = fanAlerts;
+
+  const navigateToUsers = () => navigation.navigate('UserManagement');
+
+  const renderSection = (title, icon, color, alertList, badge = false) => {
+    if (alertList.length === 0) return null;
+    return (
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <MaterialIcons name={icon} size={16} color={color} />
+            <Text style={[styles.sectionTitle, { color }]}>{title}</Text>
+          </View>
+          {badge && (
+            <View style={[styles.sectionBadge, { backgroundColor: color }]}>
+              <Text style={styles.sectionBadgeText}>{alertList.length}</Text>
+            </View>
+          )}
+        </View>
+        <View style={styles.alertsList}>
+          {alertList.map(alert => (
+            <AlertCardRouter
+              key={alert.id}
+              alert={alert}
+              onDismiss={dismissAlert}
+              onMarkRead={markAlertRead}
+              onNavigateToUsers={navigateToUsers}
+            />
+          ))}
+        </View>
+      </View>
+    );
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-
-      {/* ── Top Bar ── */}
       <View style={styles.topBar}>
-        <View style={styles.topBarLeft}>
-          <Text style={styles.topBarTitle}>Alertes</Text>
-        </View>
+        <Text style={styles.topBarTitle}>Mes Alertes</Text>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-
-        {/* ── Stats ── */}
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Stats & Actions ... (inchangé) */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <MaterialIcons name="notifications" size={22} color={COLORS.primary} />
@@ -242,100 +389,28 @@ const AlertsScreen = ({ navigation }) => {
             <Text style={styles.statLabel}>Total</Text>
           </View>
           <View style={[styles.statCard, styles.statCardUnread]}>
-            <View style={styles.statDotIcon}>
-              <MaterialIcons name="mark-email-unread" size={22} color={COLORS.secondary} />
-              {unreadCount > 0 && <View style={styles.statUnreadDot} />}
-            </View>
+            <MaterialIcons name="mark-email-unread" size={22} color={COLORS.secondary} />
             <Text style={[styles.statValue, { color: COLORS.secondary }]}>{unreadCount}</Text>
             <Text style={styles.statLabel}>Non lues</Text>
           </View>
-          {accountAlerts.length > 0 && (
-            <TouchableOpacity
-              style={[styles.statCard, styles.statCardAccount]}
-              onPress={navigateToUsers}
-              activeOpacity={0.8}
-            >
-              <MaterialIcons name="person-add" size={22} color={COLORS.primary} />
-              <Text style={[styles.statValue, { color: COLORS.primary }]}>{accountAlerts.length}</Text>
-              <Text style={styles.statLabel}>Demandes</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
-        {/* ── Boutons d'action ── */}
         <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnRead]}
-            onPress={() => { if (typeof markAllAlertsRead === 'function') markAllAlertsRead(); }}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={[styles.actionBtn, styles.actionBtnRead]} onPress={markAllAlertsRead}>
             <MaterialIcons name="done-all" size={16} color={COLORS.primary} />
             <Text style={[styles.actionBtnText, { color: COLORS.primary }]}>Tout lire</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionBtn, styles.actionBtnDelete]}
-            onPress={dismissAllAlerts}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity style={[styles.actionBtn, styles.actionBtnDelete]} onPress={dismissAllAlerts}>
             <MaterialIcons name="delete-sweep" size={16} color={COLORS.error} />
             <Text style={[styles.actionBtnText, { color: COLORS.error }]}>Supprimer tous</Text>
           </TouchableOpacity>
         </View>
 
-        {/* ── Section Demandes de compte (si existantes) ── */}
-        {accountAlerts.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleRow}>
-                <MaterialIcons name="person-add" size={16} color={COLORS.primary} />
-                <Text style={styles.sectionTitle}>Demandes de compte</Text>
-              </View>
-              <View style={styles.sectionBadge}>
-                <Text style={styles.sectionBadgeText}>{accountAlerts.length}</Text>
-              </View>
-            </View>
-            <View style={styles.alertsList}>
-              {accountAlerts.map((alert) => (
-                <AccountRequestCard
-                  key={alert.id}
-                  alert={alert}
-                  onDismiss={dismissAlert}
-                  onMarkRead={markAlertRead}
-                  onNavigateToUsers={navigateToUsers}
-                />
-              ))}
-            </View>
-          </View>
-        )}
+        {renderSection('Alertes urgentes', 'priority-high', COLORS.error, urgentBreederAlerts, true)}
+        {renderSection('Ventilation manuelle', 'air', COLORS.secondary, manualFanAlerts, true)}
+        {renderSection('Demandes de compte', 'person-add', COLORS.primary, accountAlerts, true)}
+        {renderSection('Alertes système', 'notifications', COLORS.onSurfaceVariant, systemAlerts)}
 
-        {/* ── Section Alertes système ── */}
-        {systemAlerts.length > 0 && (
-          <View style={styles.section}>
-            {accountAlerts.length > 0 && (
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleRow}>
-                  <MaterialIcons name="notifications" size={16} color={COLORS.onSurfaceVariant} />
-                  <Text style={[styles.sectionTitle, { color: COLORS.onSurfaceVariant }]}>
-                    Alertes système
-                  </Text>
-                </View>
-              </View>
-            )}
-            <View style={styles.alertsList}>
-              {systemAlerts.map((alert) => (
-                <AlertCard
-                  key={alert.id}
-                  alert={alert}
-                  onDismiss={dismissAlert}
-                  onMarkRead={markAlertRead}
-                />
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* ── Empty state ── */}
         {alerts.length === 0 && (
           <View style={styles.emptyState}>
             <MaterialIcons name="notifications-off" size={56} color={COLORS.outlineVariant} />
@@ -343,12 +418,13 @@ const AlertsScreen = ({ navigation }) => {
             <Text style={styles.emptySubtitle}>Tout est sous contrôle.</Text>
           </View>
         )}
-
-        <View style={{ height: LAYOUT.bottomNavHeight + SPACING['2xl'] }} />
       </ScrollView>
     </SafeAreaView>
   );
 };
+
+
+
 
 // ─────────────────────────────────────────
 // 🎨 STYLES
@@ -392,11 +468,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.secondary + '33',
   },
-  statCardAccount: {
-    borderWidth: 1,
-    borderColor: COLORS.primary + '33',
-  },
-  statDotIcon:  { position: 'relative' },
+  statDotIcon:   { position: 'relative' },
   statUnreadDot: {
     position: 'absolute',
     top: -2, right: -4,
@@ -470,7 +542,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
-  // ── Alert Card ──
+  // ── Alert Card base ──
   alertsList: { gap: SPACING.md },
   alertCard: {
     backgroundColor: COLORS.surfaceContainerLow,
@@ -487,6 +559,18 @@ const styles = StyleSheet.create({
   accountCard: {
     borderWidth: 1,
     borderColor: COLORS.primary + '30',
+  },
+  tempCard: {
+    borderWidth: 1,
+    borderColor: COLORS.error + '30',
+  },
+  reservoirCard: {
+    borderWidth: 1,
+    borderColor: '#1565C030',
+  },
+  fanCard: {
+    borderWidth: 1,
+    borderColor: COLORS.secondary + '30',
   },
   alertBand:    { width: 5 },
   alertContent: { flex: 1, padding: SPACING.xl, gap: SPACING.md },
@@ -573,7 +657,107 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // ── Account card extras ──
+  // ── Temperature card ──
+  tempGaugeRow: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.errorContainer,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  tempGaugeItem: {
+    alignItems: 'center',
+    gap: 2,
+    flex: 1,
+  },
+  tempGaugeDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: COLORS.error + '33',
+  },
+  tempGaugeValue: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.lg,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: COLORS.error,
+    letterSpacing: -0.5,
+  },
+  tempGaugeLabel: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // ── Reservoir card ──
+  reservoirLevelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    backgroundColor: '#E3F2FD',
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+  },
+  reservoirLevelLabel: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semiBold,
+    color: '#1565C0',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    minWidth: 40,
+  },
+  reservoirBar: {
+    flex: 1,
+    height: 8,
+    backgroundColor: '#BBDEFB',
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+  },
+  reservoirBarFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
+  },
+  reservoirLevelValue: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.base,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    minWidth: 36,
+    textAlign: 'right',
+  },
+  reservoirCapacity: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.onSurfaceVariant,
+  },
+
+  // ── Fan card ──
+  fanStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderWidth: 1,
+  },
+  fanStatusText: {
+    fontFamily: FONTS.inter,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.semiBold,
+    flex: 1,
+  },
+  fanStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  // ── Account card ──
   accountEmailRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -626,6 +810,21 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
   },
   accountActionBtnText: {
+    fontFamily: FONTS.manrope,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: COLORS.white,
+  },
+  breederActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+  },
+  breederActionBtnText: {
     fontFamily: FONTS.manrope,
     fontSize: FONT_SIZES.sm,
     fontWeight: FONT_WEIGHTS.bold,

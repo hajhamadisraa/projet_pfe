@@ -742,7 +742,7 @@ const AdminCoopScreen = ({ navigation }) => {
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity style={s.headerTitle} activeOpacity={0.8}>
-          <Text style={s.headerTitleText}>Mes Poulaillers</Text>
+          <Text style={s.headerTitleText}>Ajouter Poulaillers</Text>
         </TouchableOpacity>
         <View style={s.headerRight}>
           <TouchableOpacity style={s.headerIconBtn} onPress={() => setShowAlertPopup(true)} activeOpacity={0.8}>
