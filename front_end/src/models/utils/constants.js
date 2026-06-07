@@ -232,7 +232,7 @@ export const GRADIENTS = {
 // ─────────────────────────────────────────
 export const API = {
   BASE_URL: 'http://192.168.1.112:5000/api',
-  TIMEOUT: 10000,
+  TIMEOUT: 35000,
   USE_MOCK: false,              // ← mettre false quand le backend est prêt
 };
 
