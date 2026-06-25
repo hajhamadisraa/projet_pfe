@@ -45,7 +45,7 @@ export const MOCK_FARM = {
   id:              'f1',
   name:            'PoulIA Green Farm',
   location:        'Normandie, France',
-  totalPopulation: 12450,
+  totalPopulation: 4,
   populationTrend: +2.4,
   totalCoops:      9,
   healthyCoops:    8,

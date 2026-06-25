@@ -77,6 +77,7 @@ const CoopCard = ({ coop, onPress }) => {
           <Text style={styles.statLabel}>Population</Text>
           <Text style={styles.statValue}>
             {coop.population.toLocaleString('fr-FR')}
+            4
             <Text style={styles.statUnit}> oiseaux</Text>
           </Text>
         </View>

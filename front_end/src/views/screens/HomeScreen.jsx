@@ -4,7 +4,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import {
   Image,
-  ImageBackground,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,12 +11,32 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import useAppStore from '../../controllers/context/AppStore';
-import useRealtimeSensors from '../../controllers/hooks/useRealtimeSensors'; // ✅ NOUVEAU
+import useRealtimeSensors from '../../controllers/hooks/useRealtimeSensors';
+import api from '../../models/services/apiService';
 import {
   COLORS, FONTS, FONT_SIZES, FONT_WEIGHTS,
   GRADIENTS, LAYOUT, RADIUS, ROUTES, SHADOWS, SPACING,
 } from '../../models/utils/constants';
+
+// ─────────────────────────────────────────
+// CONFIG — flux caméra (identique à CameraScreen)
+// ─────────────────────────────────────────
+const ESP_STREAM_URL = 'http://192.168.1.53:81/stream';
+const AI_STREAM_URL  = `http://192.168.1.112:8000/video/stream?camera_url=${encodeURIComponent(ESP_STREAM_URL)}`;
+
+const getLiveFeedHtml = (streamUrl) => `
+<!DOCTYPE html><html>
+<head><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#000; display:flex; align-items:center; justify-content:center; width:100vw; height:100vh; overflow:hidden; }
+  img { width:100%; height:100%; object-fit:cover; }
+</style></head>
+<body>
+  <img src="${streamUrl}" onerror="this.style.display='none'" />
+</body></html>`;
 
 // ─────────────────────────────────────────
 // 🧩 SENSOR CARD
@@ -79,10 +98,10 @@ const WaterLevelCard = ({
           <Text style={[styles.coopStatusText, { color: badgeColor }]}>{badgeLabel}</Text>
         </View>
       </View>
-      <View style={styles.waterValueRow}>
-        <Text style={styles.waterValue}>{level}</Text>
-        <Text style={styles.waterUnit}>% — {currentVolume.toLocaleString('fr-FR')} L</Text>
-      </View>
+   <View style={styles.waterValueRow}>
+  <Text style={styles.waterValue}>{level}</Text>
+  <Text style={styles.waterUnit}>%</Text>
+</View>
       <View style={styles.waterBarTrack}>
         <View style={[styles.waterBarFill, { width: `${level}%`, backgroundColor: barColor }]} />
       </View>
@@ -112,7 +131,6 @@ const WaterLevelCard = ({
 
 // ─────────────────────────────────────────
 // 🧩 ENVIRONMENTAL OVERVIEW CARD
-// ✅ Affiche les données temps réel + indicateur de connexion
 // ─────────────────────────────────────────
 const EnvOverviewCard = ({ temperature, humidity, luminosity, connected, lastUpdate }) => {
   const items = [
@@ -147,14 +165,12 @@ const EnvOverviewCard = ({ temperature, humidity, luminosity, connected, lastUpd
     return COLORS.statusHealthy;
   };
 
-  // Formater l'heure de dernière mise à jour
   const lastUpdateStr = lastUpdate
     ? lastUpdate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : null;
 
   return (
     <View style={styles.envCard}>
-      {/* Header */}
       <View style={styles.envCardHeader}>
         <View style={styles.envTitleRow}>
           <View style={[styles.sensorIconBox, { backgroundColor: COLORS.statusHealthyBg }]}>
@@ -162,7 +178,6 @@ const EnvOverviewCard = ({ temperature, humidity, luminosity, connected, lastUpd
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.envTitle}>Conditions environnementales</Text>
-            {/* ✅ Heure de dernière mise à jour */}
             {lastUpdateStr && (
               <Text style={styles.envLastUpdate}>
                 Mis à jour à {lastUpdateStr}
@@ -171,7 +186,6 @@ const EnvOverviewCard = ({ temperature, humidity, luminosity, connected, lastUpd
           </View>
         </View>
 
-        {/* ✅ Indicateur connexion temps réel */}
         <View style={styles.envStatusRow}>
           <View style={[
             styles.envDot,
@@ -187,7 +201,6 @@ const EnvOverviewCard = ({ temperature, humidity, luminosity, connected, lastUpd
         </View>
       </View>
 
-      {/* Grille 3 colonnes */}
       <View style={styles.envGrid}>
         {items.map((item) => (
           <View
@@ -200,7 +213,7 @@ const EnvOverviewCard = ({ temperature, humidity, luminosity, connected, lastUpd
             <Text style={styles.envItemLabel}>{item.label}</Text>
             <Text style={[styles.envItemValue, item.alert && { color: COLORS.secondary }]}>
               {typeof item.value === 'number'
-                ? item.value.toFixed(1)  // 1 décimale pour les vrais capteurs
+                ? item.value.toFixed(1)
                 : item.value}
               <Text style={styles.envItemUnit}>{item.unit}</Text>
             </Text>
@@ -232,6 +245,29 @@ const HomeScreen = ({ navigation }) => {
   // Fusionner : temps réel prioritaire, store comme fallback
   const sensors = realtimeSensors || storeSensors;
 
+  // ✅ CHANGEMENT 1 — Population réelle depuis l'IA
+  const [chickenCount, setChickenCount] = React.useState(null);
+
+  React.useEffect(() => {
+    const loadChickenCount = async () => {
+      try {
+        const data = await api.get('/chicken/current');
+        if (data?.chicken_count !== undefined) {
+          setChickenCount(data.chicken_count);
+        }
+      } catch (e) {
+        console.log('[HomeScreen] chicken count:', e.message);
+      }
+    };
+    loadChickenCount();
+    const interval = setInterval(loadChickenCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ✅ CHANGEMENT 2 — Mode flux Live Feed
+  const [liveFeedMode, setLiveFeedMode] = React.useState('ai');
+  const liveFeedUrl = liveFeedMode === 'ai' ? AI_STREAM_URL : ESP_STREAM_URL;
+
   const sensorItems = sensors ? [
     {
       id: 'temp', icon: 'thermostat', label: 'Température',
@@ -251,28 +287,13 @@ const HomeScreen = ({ navigation }) => {
       trend: sensors.humidity.trend,
       alertActive: false,
     },
-    {
-      id: 'lum', icon: 'wb-sunny', label: 'Luminosité',
-      value: typeof sensors.luminosity.value === 'number'
-        ? Math.round(sensors.luminosity.value)
-        : sensors.luminosity.value,
-      unit: 'lux',
-      trend: sensors.luminosity.trend,
-      alertActive: false,
-    },
-    {
-      id: 'vent', icon: 'air', label: 'Ventilation',
-      value: sensors.ventilation.value,
-      unit: '%',
-      trend: sensors.ventilation.trend,
-      alertActive: false,
-    },
+    
   ] : [];
 
-  const goBack        = () => navigation.goBack();
-  const goToCamera    = () => navigation.navigate(ROUTES.CAMERA);
-  const goToAlerts    = () => navigation.getParent()?.navigate(ROUTES.ALERTS);
-  const goToProfile   = () => navigation.navigate(ROUTES.PROFILE);
+  const goBack      = () => navigation.goBack();
+  const goToCamera  = () => navigation.navigate(ROUTES.CAMERA);
+  const goToAlerts  = () => navigation.getParent()?.navigate(ROUTES.ALERTS);
+  const goToProfile = () => navigation.navigate(ROUTES.PROFILE);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -287,7 +308,6 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.topBarTitle} numberOfLines={1}>
               {selectedCoop?.name || 'Dashboard'}
             </Text>
-            {/* ✅ Indicateur temps réel dans la barre */}
             {connected && (
               <View style={styles.liveIndicator}>
                 <View style={styles.liveDot} />
@@ -347,7 +367,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Population Card */}
+        {/* ✅ Population Card — comptage IA réel */}
         <LinearGradient
           colors={GRADIENTS.primary}
           start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -359,7 +379,10 @@ const HomeScreen = ({ navigation }) => {
           </View>
           <View style={styles.populationRow}>
             <Text style={styles.populationCount}>
-              {selectedCoop?.population?.toLocaleString('fr-FR') || farm?.totalPopulation?.toLocaleString('fr-FR') || '12,450'}
+              {chickenCount !== null
+                ? chickenCount.toLocaleString('fr-FR')
+                : selectedCoop?.population?.toLocaleString('fr-FR') || farm?.totalPopulation?.toLocaleString('fr-FR') || '--'}
+                4
             </Text>
             <View style={styles.populationTrend}>
               <MaterialIcons name="trending-up" size={14} color={COLORS.emerald400} />
@@ -367,7 +390,9 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </View>
           <View style={styles.populationFooter}>
-            <Text style={styles.populationFooterLabel}>Total Chickens Count</Text>
+            <Text style={styles.populationFooterLabel}>
+              {chickenCount !== null ? 'Comptage IA en temps réel' : 'Total Chickens Count'}
+            </Text>
             <MaterialIcons name="bar-chart" size={20} color={COLORS.emerald400} style={{ opacity: 0.5 }} />
           </View>
           <View style={styles.populationDeco} />
@@ -382,41 +407,78 @@ const HomeScreen = ({ navigation }) => {
 
         {/* Niveau d'eau */}
         <WaterLevelCard
-          level={farm?.waterLevel ?? 72}
+          level={
+            typeof sensors?.waterLevel?.value === 'number'
+              ? sensors.waterLevel.value
+              : farm?.waterLevel ?? 72
+          }
           capacity={farm?.waterCapacity ?? 5000}
           dailyConsumption={farm?.dailyWaterConsumption ?? 320}
           lastRefill={farm?.lastWaterRefill ?? '3 jours'}
         />
 
-        {/* ✅ Conditions environnementales — TEMPS RÉEL */}
+        {/* Conditions environnementales */}
         <EnvOverviewCard
           temperature={sensors?.temperature}
           humidity={sensors?.humidity}
-          luminosity={sensors?.luminosity}
-          connected={connected}          // ← indicateur temps réel
-          lastUpdate={lastUpdate}        // ← heure dernière mise à jour
+          luminosity={sensors?.luminosity }
+          connected={connected}
+          lastUpdate={lastUpdate}
         />
 
-        {/* Live Feed */}
-        <TouchableOpacity style={styles.liveFeedWrapper} activeOpacity={0.9} onPress={goToCamera}>
-          <ImageBackground
-            source={{ uri: 'https://images.unsplash.com/photo-1548550023-2bdb3c5beed7?w=800' }}
-            style={styles.liveFeed}
-            imageStyle={styles.liveFeedImage}
-          >
-            <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.85)']}
-              style={styles.liveFeedOverlay}
-            >
-              <Text style={styles.liveFeedLabel}>Live Feed</Text>
+        {/* ✅ Live Feed — flux MJPEG réel (identique à CameraScreen) */}
+        <View style={styles.liveFeedWrapper}>
+          {/* Toggle mode */}
+          <View style={styles.liveFeedModeRow}>
+            {[{ key: 'raw', label: 'Live Cam' }, { key: 'ai', label: 'AI Stream' }].map(({ key, label }) => (
+              <TouchableOpacity
+                key={key}
+                style={[styles.liveFeedModeBtn, liveFeedMode === key && styles.liveFeedModeBtnActive]}
+                onPress={() => setLiveFeedMode(key)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.liveFeedModeBtnText, liveFeedMode === key && { color: COLORS.white }]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Flux MJPEG via WebView */}
+          <View style={{ height: 180, borderRadius: RADIUS['2xl'], overflow: 'hidden' }}>
+            <WebView
+              key={liveFeedUrl}
+              originWhitelist={['*']}
+              source={{ html: getLiveFeedHtml(liveFeedUrl) }}
+              style={{ flex: 1, backgroundColor: '#000' }}
+              scrollEnabled={false}
+              javaScriptEnabled
+              mixedContentMode="always"
+              mediaPlaybackRequiresUserAction={false}
+              allowsInlineMediaPlayback
+            />
+            {/* Overlay info bas */}
+            <View style={styles.liveFeedOverlayBottom} pointerEvents="none">
+              <View style={styles.liveFeedBadgeRow}>
+                <View style={styles.liveDotBadge} />
+                <Text style={styles.liveFeedLabel}>LIVE</Text>
+              </View>
               <Text style={styles.liveFeedTitle}>{selectedCoop?.name || 'Automated Area 04'}</Text>
               <View style={styles.liveFeedSubRow}>
                 <MaterialIcons name="videocam" size={14} color={COLORS.secondary} />
-                <Text style={styles.liveFeedSubText}>Streaming en 4K — AI tracking active</Text>
+                <Text style={styles.liveFeedSubText}>
+                  {liveFeedMode === 'ai' ? 'AI tracking active' : 'Flux direct ESP32-CAM'}
+                </Text>
               </View>
-            </LinearGradient>
-          </ImageBackground>
-        </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Bouton ouvrir CameraScreen complet */}
+          <TouchableOpacity style={styles.liveFeedOpenBtn} onPress={goToCamera} activeOpacity={0.85}>
+            <MaterialIcons name="open-in-full" size={16} color={COLORS.primary} />
+            <Text style={styles.liveFeedOpenText}>Ouvrir la caméra complète</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={{ height: LAYOUT.bottomNavHeight + SPACING['2xl'] }} />
       </ScrollView>
@@ -442,7 +504,6 @@ const styles = StyleSheet.create({
     fontWeight: FONT_WEIGHTS.extraBold, color: COLORS.white, letterSpacing: -0.3,
   },
 
-  // ✅ Indicateur temps réel dans la barre
   liveIndicator: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   liveDot:       { width: 5, height: 5, borderRadius: 3, backgroundColor: COLORS.emerald400 },
   liveText:      { fontSize: FONT_SIZES.xs, color: COLORS.emerald400, fontFamily: FONTS.inter, fontWeight: FONT_WEIGHTS.bold },
@@ -512,7 +573,6 @@ const styles = StyleSheet.create({
   waterStatLabel: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, color: COLORS.onSurfaceVariant },
   waterStatValue: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semiBold, color: COLORS.primary },
 
-  // ✅ Env Card mis à jour
   envCard: { backgroundColor: COLORS.white, borderRadius: RADIUS.xl, padding: SPACING.xl, ...SHADOWS.sm, borderWidth: 1, borderColor: COLORS.outlineVariant + '40' },
   envCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.lg },
   envTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, flex: 1 },
@@ -529,14 +589,53 @@ const styles = StyleSheet.create({
   envItemUnit: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.regular, color: COLORS.onSurfaceVariant },
   envItemSub: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.semiBold, textAlign: 'center' },
 
-  liveFeedWrapper: { borderRadius: RADIUS['2xl'], overflow: 'hidden', ...SHADOWS.md },
-  liveFeed: { height: 180, width: '100%' },
-  liveFeedImage: { borderRadius: RADIUS['2xl'] },
-  liveFeedOverlay: { flex: 1, justifyContent: 'flex-end', padding: SPACING['2xl'] },
-  liveFeedLabel: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.bold, color: COLORS.emerald400, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 4 },
-  liveFeedTitle: { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.xl, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white, marginBottom: SPACING.sm },
-  liveFeedSubRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  // ✅ Live Feed réel
+  liveFeedWrapper: {
+    borderRadius: RADIUS['2xl'], overflow: 'hidden',
+    ...SHADOWS.md, backgroundColor: COLORS.surfaceContainer,
+  },
+  liveFeedModeRow: {
+    flexDirection: 'row', gap: SPACING.sm,
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.md,
+  },
+  liveFeedModeBtn: {
+    paddingHorizontal: SPACING.lg, paddingVertical: 5,
+    borderRadius: RADIUS.full, backgroundColor: COLORS.surfaceContainerHighest,
+  },
+  liveFeedModeBtnActive: { backgroundColor: COLORS.primary },
+  liveFeedModeBtnText: {
+    fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold, color: COLORS.onSurfaceVariant,
+    textTransform: 'uppercase',
+  },
+  liveFeedOverlayBottom: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    padding: SPACING['2xl'],
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  liveFeedBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
+  liveDotBadge:     { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.error },
+  liveFeedLabel: {
+    fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold, color: COLORS.emerald400,
+    textTransform: 'uppercase', letterSpacing: 2,
+  },
+  liveFeedTitle: {
+    fontFamily: FONTS.manrope, fontSize: FONT_SIZES.xl,
+    fontWeight: FONT_WEIGHTS.bold, color: COLORS.white, marginBottom: SPACING.sm,
+  },
+  liveFeedSubRow:  { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   liveFeedSubText: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, color: COLORS.white60, fontWeight: FONT_WEIGHTS.medium },
+  liveFeedOpenBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: SPACING.sm, paddingVertical: SPACING.md,
+    backgroundColor: COLORS.surfaceContainer,
+  },
+  liveFeedOpenText: {
+    fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold, color: COLORS.primary,
+    textTransform: 'uppercase', letterSpacing: 1,
+  },
 });
 
 export default HomeScreen;

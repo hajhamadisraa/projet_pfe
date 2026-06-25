@@ -72,41 +72,43 @@ exports.create = async (req, res) => {
 
     const activationLink = `${process.env.BACKEND_URL}/api/auth/activate?token=${inviteToken}`;
 
-    await sendEmail({
-      to:      email,
-      subject: '🐔 Bienvenue sur PoulIA — Activez votre compte',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 520px; margin: auto;">
-          <h2 style="color: #1B4332;">Bonjour ${name},</h2>
-          <p>Votre compte éleveur a été créé sur <strong>PoulIA</strong>.</p>
-          <p>Cliquez sur le bouton ci-dessous pour choisir votre mot de passe :</p>
-          <a href="${activationLink}"
-             style="display:inline-block; margin: 20px 0; padding: 14px 28px;
-                    background:#FF6B35; color:#fff; border-radius:8px;
-                    text-decoration:none; font-weight:bold;">
-            Activer mon compte
-          </a>
-          <p style="color:#6B7A6E; font-size:13px;">
-            Ce lien expire dans <strong>48 heures</strong>.<br>
-            Si vous n'attendiez pas ce message, ignorez-le.
-          </p>
-        </div>
-      `,
-    });
+    try {
+      await sendEmail({
+        to:      email,
+        subject: '🐔 Bienvenue sur PoulIA — Activez votre compte',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 520px; margin: auto;">
+            <h2 style="color: #1B4332;">Bonjour ${name},</h2>
+            <p>Votre compte éleveur a été créé sur <strong>PoulIA</strong>.</p>
+            <p>Cliquez sur le bouton ci-dessous pour choisir votre mot de passe :</p>
+            <a href="${activationLink}"
+               style="display:inline-block; margin: 20px 0; padding: 14px 28px;
+                      background:#FF6B35; color:#fff; border-radius:8px;
+                      text-decoration:none; font-weight:bold;">
+              Activer mon compte
+            </a>
+            <p style="color:#6B7A6E; font-size:13px;">
+              Ce lien expire dans <strong>48 heures</strong>.<br>
+              Si vous n'attendiez pas ce message, ignorez-le.
+            </p>
+          </div>
+        `,
+      });
+    } catch (emailErr) {
+      console.warn('[users/create] Email non envoyé:', emailErr.message);
+    }
 
     await createAlert('USER_CREATED', { name: user.name, email: user.email, role: user.role });
+
+    // ✅ Repeupler cooperatives avant de renvoyer, pour cohérence avec getAll/getById
+    const populatedUser = await User.findById(user._id)
+      .select('-password')
+      .populate('cooperatives', 'name sector');
 
     res.status(201).json({
       success:   true,
       emailSent: true,
-      data: {
-        id:       user._id,
-        name:     user.name,
-        email:    user.email,
-        role:     user.role,
-        status:   user.status,
-        isActive: user.isActive,
-      },
+      data:      populatedUser,
     });
   } catch (err) {
     console.error('[users/create]', err);
@@ -311,6 +313,10 @@ exports.setPassword = async (req, res) => {
 
 // ─────────────────────────────────────────
 // PUT /api/users/:id
+// ✅ CORRIGÉ — `returnDocument: 'after'` remplacé/complété par `new: true`,
+// l'option officiellement supportée par Mongoose pour findByIdAndUpdate.
+// Combinée au fix du schéma (cooperatives en ObjectId+ref), le populate
+// fonctionne désormais correctement et ne fait plus échouer la requête.
 // ─────────────────────────────────────────
 exports.update = async (req, res) => {
   try {
@@ -326,7 +332,7 @@ exports.update = async (req, res) => {
     const user = await User.findByIdAndUpdate(
       req.params.id,
       allowed,
-      { returnDocument: 'after', runValidators: true }
+      { new: true, runValidators: true }
     )
       .select('-password')
       .populate('cooperatives', 'name sector');
@@ -334,6 +340,7 @@ exports.update = async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: 'Utilisateur introuvable.' });
     res.status(200).json({ success: true, data: user });
   } catch (err) {
+    console.error('[users/update]', err);
     res.status(400).json({ success: false, message: err.message });
   }
 };

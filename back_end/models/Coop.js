@@ -36,7 +36,6 @@ const CoopSchema = new mongoose.Schema(
       required: true,
     },
 
-    // ✅ NOUVEAU — éleveurs affectés à ce poulailler
     assignedUsers: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -54,7 +53,6 @@ const CoopSchema = new mongoose.Schema(
 
     isOnline:   { type: Boolean, default: false },
     lastSeenAt: { type: Date },
-    // Dans CoopSchema, après lastSeenAt:
     espMac: { type: String, default: null },
     image:      { type: String, default: null },
 
@@ -66,6 +64,14 @@ const CoopSchema = new mongoose.Schema(
         qte:   { type: Number, default: 1 },
       }
     ],
+
+    // ✅ AJOUT — état/mode des actionneurs piloté en AUTO (ex: éclairage via IA)
+    actuators: {
+      light: {
+        on:   { type: Boolean, default: false },
+        mode: { type: String, default: 'auto' },
+      },
+    },
   },
   { timestamps: true }
 );

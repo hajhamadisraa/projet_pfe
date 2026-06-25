@@ -48,7 +48,17 @@ const UserSchema = new mongoose.Schema(
       default: true,
     },
 
-    cooperatives: [String],
+    // ✅ CORRIGÉ — était [String], sans lien réel vers Coop.
+    // .populate('cooperatives', ...) dans userController.js ne peut
+    // fonctionner que sur un vrai ref ObjectId. Avec [String], Mongoose
+    // lève une erreur (StrictPopulateError) ou ignore le populate selon
+    // la version, ce qui cassait silencieusement les mises à jour.
+    cooperatives: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref:  'Coop',
+      },
+    ],
 
     // ✅ Avatar stocké en base64
     avatar: {

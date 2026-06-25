@@ -1,4 +1,3 @@
-// services/mqttService.js
 const mqtt        = require('mqtt');
 const Coop        = require('../models/Coop');
 const Esp32Device = require('../models/Esp32Device');
@@ -54,7 +53,7 @@ const init = (io) => {
 // ─────────────────────────────────────────────────────────────
 const handleData = async (mac, data) => {
   const { token, temperature, humidity, luminosity, ventilation,
-          waterLevel, pumpOn } = data;  // ✅ extraire waterLevel et pumpOn
+          waterLevel, pumpOn } = data;
 
   const coop = await Coop.findOne({ esp32Token: token });
   if (!coop) {
@@ -62,7 +61,6 @@ const handleData = async (mac, data) => {
     return;
   }
 
-  // Mise à jour MongoDB
   coop.sensors = coop.sensors || {};
   if (temperature !== undefined) coop.sensors.temperature = { value: parseFloat(temperature) };
   if (humidity    !== undefined) coop.sensors.humidity    = { value: parseFloat(humidity) };
@@ -74,7 +72,6 @@ const handleData = async (mac, data) => {
 
   console.log(`[MQTT] 📊 ${coop.name} → T=${temperature}°C H=${humidity}% Eau=${waterLevel ?? 0}% Pompe=${pumpOn ? 'ON' : 'OFF'}`);
 
-  // Alertes température
   if (temperature !== undefined) {
     if (temperature > (coop.tempMax || 28)) {
       await createAlert('TEMPERATURE_HIGH', {
@@ -89,7 +86,6 @@ const handleData = async (mac, data) => {
     }
   }
 
-  // ✅ Envoi Socket.IO avec waterLevel et pumpOn
   if (socketIO) {
     socketIO.to(`coop_${coop._id}`).emit('sensor_update', {
       coopId:      coop._id.toString(),
@@ -97,8 +93,9 @@ const handleData = async (mac, data) => {
       humidity,
       luminosity,
       ventilation,
-      waterLevel:  waterLevel ?? 0,    // ✅ niveau eau en %
-      pumpOn:      pumpOn    ?? false, // ✅ état pompe
+      waterLevel:  waterLevel  ?? 0,
+      pumpOn:      pumpOn      ?? false,
+      heaterOn:    data.heaterOn ?? false,
       timestamp:   new Date().toISOString(),
     });
   }
@@ -115,7 +112,26 @@ const handleActuators = async (mac, data) => {
     { lastSeenAt: new Date() }
   );
 
-  // Émettre l'état réel des relais à l'app
+  // ✅ AJOUT : persiste l'état/mode de l'éclairage en base pour que le
+  // service IA (monitoringService) sache si l'utilisateur est en AUTO
+  // sans avoir à interroger l'ESP32 directement.
+  // ⚠️ Un seul poulailler pour l'instant → on prend le seul document Coop.
+  if (data.light !== undefined || data.lightMode !== undefined) {
+    try {
+      const coop = await Coop.findOne({});
+      if (coop) {
+        coop.actuators = coop.actuators || {};
+        coop.actuators.light = {
+          on:   data.light     ?? coop.actuators.light?.on   ?? false,
+          mode: data.lightMode ?? coop.actuators.light?.mode ?? 'auto',
+        };
+        await coop.save();
+      }
+    } catch (err) {
+      console.error('[MQTT] ❌ Erreur sauvegarde actuators.light :', err.message);
+    }
+  }
+
   if (socketIO) {
     socketIO.emit('actuator_state', {
       mac, ...data, timestamp: new Date().toISOString(),

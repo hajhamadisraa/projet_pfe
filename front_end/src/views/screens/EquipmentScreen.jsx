@@ -18,7 +18,8 @@ import {
 //  Seuils climatiques
 // ─────────────────────────────────────────────────────────────
 const THRESHOLDS = {
-  fan: { critical: 35, high: 30, ideal_max: 27, ideal_min: 18 },
+  fan:    { critical: 35, high: 30, ideal_max: 27, ideal_min: 18 },
+  heater: { critical_low: 10, low: 14, ideal_min: 18 },
 };
 
 const getAutoFanState = (temperature) => {
@@ -33,6 +34,33 @@ const getAutoFanState = (temperature) => {
   if (temperature <= THRESHOLDS.fan.ideal_min)
     return { on: false, reason: `T°=${temperature.toFixed(1)}°C — Zone froide`,     color: '#378ADD' };
   return   { on: false, reason: `T°=${temperature.toFixed(1)}°C — Zone idéale ✓`,  color: COLORS.statusHealthy };
+};
+
+const getAutoHeaterState = (temperature) => {
+  if (temperature == null || isNaN(temperature))
+    return { on: false, reason: 'Capteur indisponible' };
+  if (temperature <= THRESHOLDS.heater.critical_low)
+    return { on: true,  reason: `T°=${temperature.toFixed(1)}°C — Critique froid !` };
+  if (temperature <= THRESHOLDS.heater.low)
+    return { on: true,  reason: `T°=${temperature.toFixed(1)}°C — Froid` };
+  if (temperature < THRESHOLDS.heater.ideal_min)
+    return { on: true,  reason: `T°=${temperature.toFixed(1)}°C — Sous idéal` };
+  return   { on: false, reason: `T°=${temperature.toFixed(1)}°C — Zone idéale ✓` };
+};
+
+// ── AJOUT : logique auto éclairage (programme horaire) ───────
+const getAutoLightState = () => {
+  const now    = new Date();
+  const hour   = now.getHours();
+  const minute = now.getMinutes();
+  const timeVal = hour * 60 + minute;
+  const on = timeVal >= 6 * 60 && timeVal < 20 * 60;  // 06h00 → 20h00
+  return {
+    on,
+    reason: on
+      ? `Programme actif — éteint à 20h00`
+      : `Programme inactif — allumé à 06h00`,
+  };
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -69,30 +97,24 @@ const PreviewRow = ({ items }) => (
 );
 
 // ─────────────────────────────────────────────────────────────
-//  Réservoir unique (1 seul réservoir réel)
+//  Réservoir unique
 // ─────────────────────────────────────────────────────────────
 const TANK_H = 80;
 
 const SingleReservoir = ({ levelPct, pumpOn }) => {
-  const color      = levelPct > 60 ? COLORS.statusHealthy
-                   : levelPct > 20 ? '#F59E0B'
-                   : COLORS.error;
+  const color      = levelPct > 60 ? COLORS.statusHealthy : levelPct > 20 ? '#F59E0B' : COLORS.error;
   const label      = levelPct > 60 ? 'Plein' : levelPct > 20 ? 'Bas' : 'Critique';
   const fillHeight = Math.max(2, Math.round(TANK_H * levelPct / 100));
 
   return (
     <View style={sStyles.wrapper}>
       <View style={sStyles.row}>
-        {/* Jauge visuelle */}
         <View style={sStyles.tankOuter}>
           <View style={[sStyles.tankFill, { height: fillHeight, backgroundColor: color + '40' }]} />
           <View style={[sStyles.tankSurface, { bottom: fillHeight - 2, backgroundColor: color }]} />
-          {/* Marqueurs de niveau */}
           <View style={[sStyles.marker, { bottom: TANK_H * 0.6 }]} />
           <View style={[sStyles.marker, { bottom: TANK_H * 0.2 }]} />
         </View>
-
-        {/* Infos */}
         <View style={sStyles.info}>
           <Text style={[sStyles.pct, { color }]}>{levelPct}%</Text>
           <View style={[sStyles.pill, { backgroundColor: color + '20' }]}>
@@ -113,8 +135,6 @@ const SingleReservoir = ({ levelPct, pumpOn }) => {
           )}
         </View>
       </View>
-
-      {/* Barre de progression */}
       <View style={sStyles.barBg}>
         <View style={[sStyles.barFill, { width: `${levelPct}%`, backgroundColor: color }]} />
       </View>
@@ -213,47 +233,61 @@ const EquipmentScreen = ({ navigation }) => {
   const selectedCoop = useAppStore((s) => s.selectedCoop);
 
   const { sensors } = useRealtimeSensors(selectedCoop?.id);
-  const temperature  = sensors?.temperature?.value ?? null;
-
-  // ── waterLevel vient des données temps réel ESP32 ──────────
-  // mqttService.js publie waterLevel (%) dans sensor_update
+  const temperature   = sensors?.temperature?.value ?? null;
   const waterLevelPct = sensors?.waterLevel?.value ?? 0;
+  const luminosity    = sensors?.luminosity?.value ?? null;  // ← AJOUT
 
-  // ── Logique auto ventilateur ─────────────────────────────────
+  // ── Logique auto ventilateur ──────────────────────────────────
   const autoFan = useMemo(() => getAutoFanState(temperature), [temperature]);
 
-  // ── Logique auto pompe ───────────────────────────────────────
+  // ── Logique auto pompe ────────────────────────────────────────
   const autoPump = useMemo(() => {
-  // Ne pas décider si on n'a pas encore reçu de données
-  if (sensors === null) {
-    return { on: false, reason: 'En attente données capteur...' };
-  }
-  return {
-    on:     waterLevelPct < 12,
-    reason: waterLevelPct >= 12
-      ? `Eau détectée ${waterLevelPct}% — Pompe OFF`
-      : `Capteur hors eau — Pompe ON`,
-  };
-}, [waterLevelPct, sensors]);
-  // ── useActuators ─────────────────────────────────────────────
+    if (sensors === null) return { on: false, reason: 'En attente données capteur...' };
+    return {
+      on:     waterLevelPct < 12,
+      reason: waterLevelPct >= 12
+        ? `Eau détectée ${waterLevelPct}% — Pompe OFF`
+        : `Capteur hors eau — Pompe ON`,
+    };
+  }, [waterLevelPct, sensors]);
+
+  // ── Logique auto chauffage ────────────────────────────────────
+  const autoHeater = useMemo(() => getAutoHeaterState(temperature), [temperature]);
+
+  // ── Logique auto éclairage (recalcul chaque minute) ──────────
+  const autoLight = useMemo(() => getAutoLightState(), [
+    // recalcul toutes les minutes via un tick
+    Math.floor(Date.now() / 60000),
+  ]);
+
+  // ── useActuators ──────────────────────────────────────────────
   const { actuators, sendCommand, setMode } = useActuators(
     selectedCoop?.id,
     selectedCoop?.espMac,
-    { fan: autoFan.on, waterPump: autoPump.on }
+    {
+      fan:       autoFan.on,
+      waterPump: autoPump.on,
+      heater:    autoHeater.on,
+      light:     autoLight.on,   // ← AJOUT
+    }
   );
 
-  const fanRunning  = actuators?.fan?.mode === 'auto'
+  const fanRunning = actuators?.fan?.mode === 'auto'
     ? autoFan.on : (actuators?.fan?.on ?? false);
 
   const pumpRunning = actuators?.waterPump?.mode === 'auto'
     ? autoPump.on : (actuators?.waterPump?.on ?? false);
 
-  // ── Mocks pour les autres équipements ───────────────────────
+  const heaterRunning = actuators?.heater?.mode === 'auto'
+    ? autoHeater.on : (actuators?.heater?.on ?? false);
+
+  // ── AJOUT : état éclairage ────────────────────────────────────
+  const lightRunning = actuators?.light?.mode === 'auto'
+    ? autoLight.on : (actuators?.light?.on ?? false);
+
+  // ── Mocks (sans chauffage, sans éclairage) ───────────────────
   const [mockEquip, setMockEquip] = useState({
-    padCooling: { mode: 'auto',   running: false },
-    eclairage:  { mode: 'manuel', running: false },
-    stores:     { mode: 'auto',   running: true  },
-    chauffage:  { mode: 'auto',   running: false },
+    padCooling: { mode: 'auto', running: false },
   });
   const toggleMock = (key) => (val) => setMockEquip((p) => ({ ...p, [key]: { ...p[key], mode: val } }));
   const startMock  = (key) => setMockEquip((p) => ({ ...p, [key]: { ...p[key], running: true } }));
@@ -261,17 +295,34 @@ const EquipmentScreen = ({ navigation }) => {
 
   const e = mockEquip;
 
-  // Previews
+  // ── Previews ──────────────────────────────────────────────────
   const fanPreviews = [
-    { icon: 'thermostat', label: 'Temp actuelle',   value: temperature != null ? `${temperature.toFixed(1)}°C` : '--', color: temperature >= THRESHOLDS.fan.high ? COLORS.error : temperature >= THRESHOLDS.fan.ideal_max ? COLORS.secondary : COLORS.statusHealthy },
+    { icon: 'thermostat', label: 'Temp actuelle',    value: temperature != null ? `${temperature.toFixed(1)}°C` : '--', color: temperature >= THRESHOLDS.fan.high ? COLORS.error : temperature >= THRESHOLDS.fan.ideal_max ? COLORS.secondary : COLORS.statusHealthy },
     { icon: 'thermostat', label: 'Seuil activation', value: `${THRESHOLDS.fan.ideal_max}°C` },
-    { icon: 'air',        label: 'État relais',      value: fanRunning ? 'ON' : 'OFF', color: fanRunning ? COLORS.statusHealthy : COLORS.outlineVariant },
+    { icon: 'air',        label: 'État relais',       value: fanRunning ? 'ON' : 'OFF', color: fanRunning ? COLORS.statusHealthy : COLORS.outlineVariant },
   ];
 
   const pumpPreviews = [
-    { icon: 'water-drop',  label: 'Niveau eau',    value: `${waterLevelPct}%`,          color: waterLevelPct > 60 ? COLORS.statusHealthy : waterLevelPct > 20 ? '#F59E0B' : COLORS.error },
-    { icon: 'sensors',     label: 'Seuil pompe',   value: '60%' },
-    { icon: 'water',       label: 'État pompe',    value: pumpRunning ? 'ON' : 'OFF',    color: pumpRunning ? COLORS.statusHealthy : COLORS.outlineVariant },
+    { icon: 'water-drop', label: 'Niveau eau',  value: `${waterLevelPct}%`,        color: waterLevelPct > 60 ? COLORS.statusHealthy : waterLevelPct > 20 ? '#F59E0B' : COLORS.error },
+    { icon: 'sensors',    label: 'Seuil pompe', value: '60%' },
+    { icon: 'water',      label: 'État pompe',  value: pumpRunning ? 'ON' : 'OFF',  color: pumpRunning ? COLORS.statusHealthy : COLORS.outlineVariant },
+  ];
+
+  const heaterPreviews = [
+    { icon: 'thermostat',        label: 'Seuil activation', value: `${THRESHOLDS.heater.ideal_min}°C` },
+    { icon: 'device-thermostat', label: 'Temp actuelle',    value: temperature != null ? `${temperature.toFixed(1)}°C` : '--',
+      color: temperature <= THRESHOLDS.heater.low ? COLORS.error : temperature <= THRESHOLDS.heater.ideal_min ? COLORS.warning : COLORS.statusHealthy },
+    { icon: 'heat-pump',         label: 'État relais',      value: heaterRunning ? 'ON' : 'OFF',
+      color: heaterRunning ? COLORS.statusHealthy : COLORS.outlineVariant },
+  ];
+
+  // ── AJOUT : previews éclairage ────────────────────────────────
+  const lightPreviews = [
+    { icon: 'wb-sunny',  label: 'Luminosité',   value: luminosity != null ? `${Math.round(luminosity)} lux` : '--',
+      color: luminosity > 500 ? COLORS.statusHealthy : luminosity > 100 ? '#F59E0B' : COLORS.outlineVariant },
+    { icon: 'schedule',  label: 'Programme',    value: '06h→20h' },
+    { icon: 'lightbulb', label: 'État relais',  value: lightRunning ? 'ON' : 'OFF',
+      color: lightRunning ? COLORS.statusHealthy : COLORS.outlineVariant },
   ];
 
   return (
@@ -335,7 +386,7 @@ const EquipmentScreen = ({ navigation }) => {
           onStop={() => sendCommand('fan', false)}
         />
 
-        {/* ✅ POMPE À EAU — connectée à l'ESP32 + 1 seul réservoir réel */}
+        {/* ✅ POMPE À EAU */}
         <EquipmentCard
           icon="water" title="Pompe à eau"
           mode={actuators?.waterPump?.mode ?? 'auto'}
@@ -347,18 +398,48 @@ const EquipmentScreen = ({ navigation }) => {
           onStart={() => sendCommand('waterPump', true)}
           onStop={() => sendCommand('waterPump', false)}
         >
-          {/* Réservoir unique réel */}
           <SingleReservoir levelPct={waterLevelPct} pumpOn={pumpRunning} />
         </EquipmentCard>
 
+        {/* ✅ CHAUFFAGE */}
+        <EquipmentCard
+          icon="heat-pump" title="Chauffage"
+          mode={actuators?.heater?.mode ?? 'auto'}
+          running={heaterRunning}
+          loading={actuators?.heater?.loading ?? false}
+          autoReason={autoHeater.reason}
+          previewItems={heaterPreviews}
+          onModeToggle={(m) => setMode('heater', m)}
+          onStart={() => sendCommand('heater', true)}
+          onStop={() => sendCommand('heater', false)}
+        />
+
+        {/* ✅ ÉCLAIRAGE — connecté ESP32 */}
+        <EquipmentCard
+          icon="lightbulb" title="Éclairage"
+          mode={actuators?.light?.mode ?? 'auto'}
+          running={lightRunning}
+          loading={actuators?.light?.loading ?? false}
+          autoReason={autoLight.reason}
+          previewItems={lightPreviews}
+          onModeToggle={(m) => setMode('light', m)}
+          onStart={() => sendCommand('light', true)}
+          onStop={() => sendCommand('light', false)}
+        />
+
         {/* Pad Cooling — mock */}
-        <EquipmentCard icon="ac-unit" title="Pad Cooling" mode={e.padCooling.mode} running={e.padCooling.running} loading={false} autoReason="Actif si T° > 28°C" previewItems={[{ icon: 'thermostat', label: 'Seuil', value: '28°C' }, { icon: 'device-thermostat', label: 'Actuelle', value: temperature != null ? `${temperature.toFixed(1)}°C` : '--' }]} onModeToggle={toggleMock('padCooling')} onStart={() => startMock('padCooling')} onStop={() => stopMock('padCooling')} />
-
-        {/* Éclairage — mock */}
-        <EquipmentCard icon="lightbulb" title="Éclairage" mode={e.eclairage.mode} running={e.eclairage.running} loading={false} autoReason="Programme 06h00 → 20h00" previewItems={[{ icon: 'wb-sunny', label: 'Intensité', value: e.eclairage.running ? '820 lux' : '0 lux' }, { icon: 'schedule', label: 'Programme', value: '16 h/j' }]} onModeToggle={toggleMock('eclairage')} onStart={() => startMock('eclairage')} onStop={() => stopMock('eclairage')} />
-
-        {/* Chauffage — mock */}
-        <EquipmentCard icon="heat-pump" title="Chauffage" mode={e.chauffage.mode} running={e.chauffage.running} loading={false} autoReason="Actif si T° < 18°C" previewItems={[{ icon: 'thermostat', label: 'Cible', value: '24.5°C' }, { icon: 'device-thermostat', label: 'Actuelle', value: temperature != null ? `${temperature.toFixed(1)}°C` : '--' }]} onModeToggle={toggleMock('chauffage')} onStart={() => startMock('chauffage')} onStop={() => stopMock('chauffage')} />
+        <EquipmentCard
+          icon="ac-unit" title="Pad Cooling"
+          mode={e.padCooling.mode} running={e.padCooling.running} loading={false}
+          autoReason="Actif si T° > 28°C"
+          previewItems={[
+            { icon: 'thermostat',        label: 'Seuil',    value: '28°C' },
+            { icon: 'device-thermostat', label: 'Actuelle', value: temperature != null ? `${temperature.toFixed(1)}°C` : '--' },
+          ]}
+          onModeToggle={toggleMock('padCooling')}
+          onStart={() => startMock('padCooling')}
+          onStop={() => stopMock('padCooling')}
+        />
 
         <View style={{ height: LAYOUT.bottomNavHeight + SPACING['2xl'] }} />
       </ScrollView>
@@ -370,15 +451,9 @@ const EquipmentScreen = ({ navigation }) => {
 //  Styles réservoir unique
 // ─────────────────────────────────────────────────────────────
 const sStyles = StyleSheet.create({
-  wrapper: { backgroundColor: COLORS.surfaceContainer, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: SPACING.md },
-  row:     { flexDirection: 'row', alignItems: 'center', gap: SPACING.xl },
-  tankOuter: {
-    width: 40, height: TANK_H,
-    borderRadius: RADIUS.sm,
-    backgroundColor: COLORS.outlineVariant + '30',
-    borderWidth: 1, borderColor: COLORS.outlineVariant + '60',
-    overflow: 'hidden', justifyContent: 'flex-end', position: 'relative',
-  },
+  wrapper:     { backgroundColor: COLORS.surfaceContainer, borderRadius: RADIUS.lg, padding: SPACING.lg, gap: SPACING.md },
+  row:         { flexDirection: 'row', alignItems: 'center', gap: SPACING.xl },
+  tankOuter:   { width: 40, height: TANK_H, borderRadius: RADIUS.sm, backgroundColor: COLORS.outlineVariant + '30', borderWidth: 1, borderColor: COLORS.outlineVariant + '60', overflow: 'hidden', justifyContent: 'flex-end', position: 'relative' },
   tankFill:    { width: '100%' },
   tankSurface: { position: 'absolute', left: 0, right: 0, height: 2, borderRadius: 1 },
   marker:      { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: COLORS.outlineVariant + '80' },
@@ -400,57 +475,57 @@ const sStyles = StyleSheet.create({
 //  Styles principaux
 // ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.surface },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.primary, paddingHorizontal: SPACING['2xl'], paddingVertical: SPACING.lg, height: LAYOUT.topBarHeight },
-  topBarLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 },
-  backBtn: { padding: SPACING.sm, borderRadius: RADIUS.full, backgroundColor: COLORS.white10 },
-  topBarTitle: { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.extraBold, color: COLORS.white, letterSpacing: -0.3, flex: 1 },
-  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
-  notifBtn: { position: 'relative', padding: SPACING.xs },
-  notifBadge: { position: 'absolute', top: 0, right: 0, backgroundColor: COLORS.error, borderRadius: RADIUS.full, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, borderWidth: 1.5, borderColor: COLORS.primary },
-  notifBadgeText: { fontSize: 9, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white },
-  avatarWrapper: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', borderWidth: 1.5, borderColor: COLORS.white10 },
-  avatar: { width: '100%', height: '100%' },
-  avatarFallback: { backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', flex: 1 },
-  avatarInitials: { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white },
-  scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: SPACING['2xl'], paddingTop: SPACING['2xl'], gap: SPACING.lg },
-  titleSection: { gap: 4, marginBottom: SPACING.sm },
-  sectionLabel: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.bold, color: COLORS.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 3 },
-  screenTitle: { fontFamily: FONTS.manrope, fontSize: FONT_SIZES['3xl'], fontWeight: FONT_WEIGHTS.extraBold, color: COLORS.primary, letterSpacing: -0.5 },
-  iaBanner: { backgroundColor: COLORS.primary, borderRadius: RADIUS['2xl'], padding: SPACING['2xl'], marginBottom: SPACING.md, overflow: 'hidden', ...SHADOWS.lg },
-  iaBannerContent: { zIndex: 1 },
-  iaBannerTag: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md },
-  iaBannerTagText: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.bold, color: COLORS.statusHealthy, textTransform: 'uppercase', letterSpacing: 2 },
-  iaBannerTitle: { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.xl, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white, marginBottom: SPACING.sm },
+  safe:             { flex: 1, backgroundColor: COLORS.surface },
+  topBar:           { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: COLORS.primary, paddingHorizontal: SPACING['2xl'], paddingVertical: SPACING.lg, height: LAYOUT.topBarHeight },
+  topBarLeft:       { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 },
+  backBtn:          { padding: SPACING.sm, borderRadius: RADIUS.full, backgroundColor: COLORS.white10 },
+  topBarTitle:      { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.extraBold, color: COLORS.white, letterSpacing: -0.3, flex: 1 },
+  topBarRight:      { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+  notifBtn:         { position: 'relative', padding: SPACING.xs },
+  notifBadge:       { position: 'absolute', top: 0, right: 0, backgroundColor: COLORS.error, borderRadius: RADIUS.full, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3, borderWidth: 1.5, borderColor: COLORS.primary },
+  notifBadgeText:   { fontSize: 9, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white },
+  avatarWrapper:    { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', borderWidth: 1.5, borderColor: COLORS.white10 },
+  avatar:           { width: '100%', height: '100%' },
+  avatarFallback:   { backgroundColor: COLORS.primaryLight, alignItems: 'center', justifyContent: 'center', flex: 1 },
+  avatarInitials:   { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white },
+  scroll:           { flex: 1 },
+  scrollContent:    { paddingHorizontal: SPACING['2xl'], paddingTop: SPACING['2xl'], gap: SPACING.lg },
+  titleSection:     { gap: 4, marginBottom: SPACING.sm },
+  sectionLabel:     { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.bold, color: COLORS.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 3 },
+  screenTitle:      { fontFamily: FONTS.manrope, fontSize: FONT_SIZES['3xl'], fontWeight: FONT_WEIGHTS.extraBold, color: COLORS.primary, letterSpacing: -0.5 },
+  iaBanner:         { backgroundColor: COLORS.primary, borderRadius: RADIUS['2xl'], padding: SPACING['2xl'], marginBottom: SPACING.md, overflow: 'hidden', ...SHADOWS.lg },
+  iaBannerContent:  { zIndex: 1 },
+  iaBannerTag:      { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md },
+  iaBannerTagText:  { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.bold, color: COLORS.statusHealthy, textTransform: 'uppercase', letterSpacing: 2 },
+  iaBannerTitle:    { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.xl, fontWeight: FONT_WEIGHTS.bold, color: COLORS.white, marginBottom: SPACING.sm },
   iaBannerSubtitle: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.sm, color: 'rgba(255,255,255,0.8)', lineHeight: 20 },
-  iaBannerDeco: { position: 'absolute', right: -20, top: -20, width: 128, height: 128, borderRadius: 64, backgroundColor: COLORS.statusHealthy + '33' },
-  card: { backgroundColor: COLORS.surfaceContainerLow, padding: SPACING['2xl'], ...SHADOWS.sm, gap: SPACING.lg, borderLeftWidth: 4, borderRadius: RADIUS.xl },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.lg, flex: 1 },
-  iconWrapper: { width: 48, height: 48, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center' },
-  cardTitle: { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.bold, color: COLORS.primary, marginBottom: 4 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.bold, textTransform: 'uppercase', letterSpacing: 1 },
-  modeToggleWrapper: { flexDirection: 'row', backgroundColor: COLORS.surfaceContainer, borderRadius: RADIUS.full, padding: 4, borderWidth: 1, borderColor: COLORS.outlineVariant + '1A' },
-  modeBtn: { paddingHorizontal: SPACING.md, paddingVertical: 6, borderRadius: RADIUS.full },
-  modeBtnText: { fontFamily: FONTS.inter, fontSize: 9, fontWeight: FONT_WEIGHTS.bold, color: COLORS.onSurfaceVariant, letterSpacing: 1 },
-  previewRow: { flexDirection: 'row', backgroundColor: COLORS.surfaceContainer, borderRadius: RADIUS.lg, paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm },
-  previewItem: { flex: 1, alignItems: 'center', gap: 3 },
-  previewSep: { width: 1, backgroundColor: COLORS.outlineVariant + '50', marginVertical: 4 },
-  previewValue: { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.extraBold, color: COLORS.primary, textAlign: 'center' },
-  previewLabel: { fontFamily: FONTS.inter, fontSize: 10, color: COLORS.onSurfaceVariant, textAlign: 'center' },
-  autoReasonBox: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surfaceContainer, borderRadius: RADIUS.md, padding: SPACING.md },
-  autoReasonText: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, color: COLORS.primary, flex: 1, fontWeight: FONT_WEIGHTS.semiBold },
-  cardFooter: { borderTopWidth: 1, borderTopColor: COLORS.outlineVariant + '1A', paddingTop: SPACING.lg },
-  footerCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm },
-  activeIndicator: { width: 6, height: 6, borderRadius: 3 },
-  activeText: { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.extraBold, letterSpacing: 2, textTransform: 'uppercase' },
-  manualActions: { flexDirection: 'row', gap: SPACING.md },
-  manualBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.lg, borderRadius: RADIUS.lg, ...SHADOWS.sm },
-  manualBtnDisabled: { opacity: 0.45 },
-  manualBtnText: { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.extraBold, color: COLORS.white, letterSpacing: 2, textTransform: 'uppercase' },
+  iaBannerDeco:     { position: 'absolute', right: -20, top: -20, width: 128, height: 128, borderRadius: 64, backgroundColor: COLORS.statusHealthy + '33' },
+  card:             { backgroundColor: COLORS.surfaceContainerLow, padding: SPACING['2xl'], ...SHADOWS.sm, gap: SPACING.lg, borderLeftWidth: 4, borderRadius: RADIUS.xl },
+  cardHeader:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cardHeaderLeft:   { flexDirection: 'row', alignItems: 'center', gap: SPACING.lg, flex: 1 },
+  iconWrapper:      { width: 48, height: 48, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center' },
+  cardTitle:        { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.bold, color: COLORS.primary, marginBottom: 4 },
+  statusRow:        { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+  statusDot:        { width: 6, height: 6, borderRadius: 3 },
+  statusText:       { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.bold, textTransform: 'uppercase', letterSpacing: 1 },
+  modeToggleWrapper:{ flexDirection: 'row', backgroundColor: COLORS.surfaceContainer, borderRadius: RADIUS.full, padding: 4, borderWidth: 1, borderColor: COLORS.outlineVariant + '1A' },
+  modeBtn:          { paddingHorizontal: SPACING.md, paddingVertical: 6, borderRadius: RADIUS.full },
+  modeBtnText:      { fontFamily: FONTS.inter, fontSize: 9, fontWeight: FONT_WEIGHTS.bold, color: COLORS.onSurfaceVariant, letterSpacing: 1 },
+  previewRow:       { flexDirection: 'row', backgroundColor: COLORS.surfaceContainer, borderRadius: RADIUS.lg, paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm },
+  previewItem:      { flex: 1, alignItems: 'center', gap: 3 },
+  previewSep:       { width: 1, backgroundColor: COLORS.outlineVariant + '50', marginVertical: 4 },
+  previewValue:     { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.extraBold, color: COLORS.primary, textAlign: 'center' },
+  previewLabel:     { fontFamily: FONTS.inter, fontSize: 10, color: COLORS.onSurfaceVariant, textAlign: 'center' },
+  autoReasonBox:    { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: COLORS.surfaceContainer, borderRadius: RADIUS.md, padding: SPACING.md },
+  autoReasonText:   { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, color: COLORS.primary, flex: 1, fontWeight: FONT_WEIGHTS.semiBold },
+  cardFooter:       { borderTopWidth: 1, borderTopColor: COLORS.outlineVariant + '1A', paddingTop: SPACING.lg },
+  footerCenter:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm },
+  activeIndicator:  { width: 6, height: 6, borderRadius: 3 },
+  activeText:       { fontFamily: FONTS.inter, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.extraBold, letterSpacing: 2, textTransform: 'uppercase' },
+  manualActions:    { flexDirection: 'row', gap: SPACING.md },
+  manualBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: SPACING.lg, borderRadius: RADIUS.lg, ...SHADOWS.sm },
+  manualBtnDisabled:{ opacity: 0.45 },
+  manualBtnText:    { fontFamily: FONTS.manrope, fontSize: FONT_SIZES.xs, fontWeight: FONT_WEIGHTS.extraBold, color: COLORS.white, letterSpacing: 2, textTransform: 'uppercase' },
 });
 
 export default EquipmentScreen;

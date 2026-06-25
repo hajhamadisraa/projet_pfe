@@ -6,7 +6,9 @@
 #include "../config/config.h"
 #include "../actuators/fan.h"
 #include "../controllers/climate_controller.h"
+#include "../controllers/heating controller.h"
 #include "../controllers/water_controller.h"
+#include "../controllers/lighting_controller.h"
 
 MqttManager mqttMgr;
 static MqttManager* _instance = nullptr;
@@ -39,6 +41,7 @@ void MqttManager::_connect() {
                       _topicStatus.c_str(), 1, true, willMsg.c_str())) {
         Serial.println(" OK");
         _mqtt.subscribe(_topicCommands.c_str(), 1);
+        Serial.println("[MQTT] Souscrit : " + _topicCommands);  // ← log diagnostic MAC
         String onlineMsg = "{\"online\":true,\"mac\":\"" + _mac + "\"}";
         _mqtt.publish(_topicStatus.c_str(), onlineMsg.c_str(), true);
         delay(200);
@@ -69,6 +72,7 @@ PubSubClient* MqttManager::client()      { return &_mqtt; }
 void MqttManager::_onMessage(char* topic, byte* payload, unsigned int length) {
     String msg;
     for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
+    Serial.println("[MQTT] Commande reçue sur : " + String(topic));  // ← log topic reçu
     Serial.println("[MQTT] Commande : " + msg);
 
     StaticJsonDocument<200> cmd;
@@ -84,11 +88,17 @@ void MqttManager::_onMessage(char* topic, byte* payload, unsigned int length) {
             climateCtrl.setFanManual(value);
         }
         else if (target == "waterPump") {
-            waterCtrl.setPumpMode(PumpMode::PUMP_MANUAL);   // ✅ PUMP_MANUAL
+            waterCtrl.setPumpMode(PumpMode::PUMP_MANUAL);
             waterCtrl.setPumpManual(value);
         }
-        else if (target == "heater")     gpio_set_level((gpio_num_t)PIN_HEATER,      value ? 0 : 1);
-        else if (target == "light")      gpio_set_level((gpio_num_t)PIN_LIGHT,       value ? 0 : 1);
+        else if (target == "heater") {
+            heatingCtrl.setHeaterMode(HeaterMode::MANUAL);
+            heatingCtrl.setHeaterManual(value);
+        }
+        else if (target == "light") {
+            lightingCtrl.setLightMode(LightMode::MANUAL);
+            lightingCtrl.setLightManual(value);
+        }
         else if (target == "padCooling") gpio_set_level((gpio_num_t)PIN_PAD_COOLING, value ? 0 : 1);
         else { Serial.println("[MQTT] Cible inconnue : " + target); return; }
 
@@ -103,9 +113,19 @@ void MqttManager::_onMessage(char* topic, byte* payload, unsigned int length) {
         }
         else if (target == "waterPump") {
             String modeStr = cmd["value"] | "";
-            // ✅ PUMP_AUTO et PUMP_MANUAL
             waterCtrl.setPumpMode(modeStr == "auto" ? PumpMode::PUMP_AUTO : PumpMode::PUMP_MANUAL);
         }
+        else if (target == "heater") {
+            String modeStr = cmd["value"] | "";
+            heatingCtrl.setHeaterMode(modeStr == "auto" ? HeaterMode::AUTO : HeaterMode::MANUAL);
+        }
+        else if (target == "light") {
+            String modeStr = cmd["value"] | "";
+            lightingCtrl.setLightMode(modeStr == "auto" ? LightMode::AUTO : LightMode::MANUAL);
+        }
+
+        delay(50);
+        if (_instance) _instance->publishActuatorsState(fan.isOn(), waterCtrl.isPumpOn());
     }
 
     else if (action == "RESET") {
@@ -127,6 +147,7 @@ void MqttManager::publishData(float temp, float humidity, float lux,
     doc["ventilation"] = fanOn ? 1.0f : 0.0f;
     doc["waterLevel"]  = waterPct;
     doc["pumpOn"]      = pumpOn;
+    doc["heaterOn"]    = heatingCtrl.isHeaterOn();
     doc["sensorOk"]    = sensorOk;
     doc["uptime"]      = millis() / 1000;
     doc["rssi"]        = WiFi.RSSI();
@@ -154,8 +175,8 @@ void MqttManager::publishActuatorsState(bool fanOn, bool pumpOn) {
     StaticJsonDocument<200> doc;
     doc["mac"]        = _mac;
     doc["fan"]        = fanOn;
-    doc["heater"]     = (gpio_get_level((gpio_num_t)PIN_HEATER)      == 0);
-    doc["light"]      = (gpio_get_level((gpio_num_t)PIN_LIGHT)       == 0);
+    doc["heater"]     = heatingCtrl.isHeaterOn();
+    doc["light"]      = lightingCtrl.isLightOn();
     doc["padCooling"] = (gpio_get_level((gpio_num_t)PIN_PAD_COOLING) == 0);
     doc["waterPump"]  = pumpOn;
     String payload; serializeJson(doc, payload);

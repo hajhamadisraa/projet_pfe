@@ -28,7 +28,7 @@
 #define RELAY_ON               LOW
 #define RELAY_OFF              HIGH
 #define PIN_FAN                16
-#define PIN_HEATER             17
+#define PIN_HEATER             26
 #define PIN_LIGHT              18
 #define PIN_PAD_COOLING        19
 #define PIN_WATER_PUMP         25
@@ -44,6 +44,11 @@
 #define TEMP_IDEAL_MAX         27.0f
 #define TEMP_IDEAL_MIN         18.0f
 #define FAN_HYSTERESIS         1.5f
+
+// ── Seuils chauffage ──────────────────────────────────────────
+#define TEMP_CRITICAL_LOW      10.0f
+#define TEMP_LOW               14.0f
+#define HEATER_HYSTERESIS      1.5f
 
 // ── Debug ─────────────────────────────────────────────────────
 #define SERIAL_BAUD            115200

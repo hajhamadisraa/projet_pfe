@@ -23,12 +23,31 @@ exports.getAll = async (req, res) => {
 };
 
 // GET /api/coops/my
-// ✅ CORRIGÉ — ajoute espMac depuis Esp32Device
+// ✅ DEBUG — logs temporaires ajoutés pour diagnostiquer le problème
+// d'affectation éleveur ↔ poulailler. À retirer une fois le bug confirmé/résolu.
 exports.getMy = async (req, res) => {
   try {
+    console.log('========================================');
+    console.log('[DEBUG getMy] req.user.id =', req.user.id, '(type:', typeof req.user.id, ')');
+
     const coops = await Coop.find({ assignedUsers: req.user.id })
       .populate('assignedUsers', 'name avatar role')
       .lean();
+
+    console.log('[DEBUG getMy] coops trouvées pour cet utilisateur:', coops.length);
+
+    // ✅ Affiche TOUTES les coops et leur champ assignedUsers brut,
+    // sans la troncature [Array] de React Native, pour voir exactement
+    // ce qui est stocké en base.
+    const allCoops = await Coop.find({}).select('name assignedUsers').lean();
+    console.log('[DEBUG getMy] Toutes les coops en base et leurs assignedUsers:');
+    allCoops.forEach((c) => {
+      console.log(
+        `  - "${c.name}" (${c._id}) → assignedUsers:`,
+        c.assignedUsers.map((u) => u.toString())
+      );
+    });
+    console.log('========================================');
 
     // Pour chaque coop, chercher l'ESP32 assigné et récupérer sa MAC
     const coopsWithMac = await Promise.all(coops.map(async (coop) => {
@@ -44,6 +63,7 @@ exports.getMy = async (req, res) => {
 
     res.status(200).json({ success: true, count: coopsWithMac.length, data: coopsWithMac });
   } catch (err) {
+    console.error('[DEBUG getMy] ERREUR:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -150,16 +170,27 @@ exports.remove = async (req, res) => {
 };
 
 // POST /api/coops/:id/assign
+// ✅ DEBUG — logs temporaires ajoutés
 exports.assignUser = async (req, res) => {
   try {
     const { userId } = req.body;
+    console.log('[DEBUG assignUser] coopId =', req.params.id, '| userId =', userId, '| req.user =', req.user.id, req.user.role);
+
     const coop = await Coop.findById(req.params.id);
-    if (!coop) return res.status(404).json({ success: false, message: 'Poulailler introuvable.' });
+    if (!coop) {
+      console.log('[DEBUG assignUser] Poulailler introuvable !');
+      return res.status(404).json({ success: false, message: 'Poulailler introuvable.' });
+    }
+
+    console.log('[DEBUG assignUser] coop.owner =', coop.owner.toString(), '| match req.user.id ?', coop.owner.toString() === req.user.id);
+
     if (coop.owner.toString() !== req.user.id && req.user.role !== 'admin') {
+      console.log('[DEBUG assignUser] ACCÈS REFUSÉ — ni owner, ni admin');
       return res.status(403).json({ success: false, message: 'Accès refusé.' });
     }
 
-    await Coop.findByIdAndUpdate(req.params.id, { $addToSet: { assignedUsers: userId } }, { new: true });
+    const result = await Coop.findByIdAndUpdate(req.params.id, { $addToSet: { assignedUsers: userId } }, { new: true });
+    console.log('[DEBUG assignUser] assignedUsers après update:', result.assignedUsers.map(String));
 
     const user = await User.findById(userId).select('name');
     const wasAlreadyAssigned = coop.assignedUsers.map(String).includes(String(userId));
@@ -175,6 +206,7 @@ exports.assignUser = async (req, res) => {
     const updated = await Coop.findById(coop._id).populate('assignedUsers', 'name avatar role');
     res.status(200).json({ success: true, data: updated });
   } catch (err) {
+    console.error('[DEBUG assignUser] ERREUR:', err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

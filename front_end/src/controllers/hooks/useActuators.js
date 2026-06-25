@@ -6,11 +6,6 @@ import { API } from '../../models/utils/constants';
 
 const SOCKET_URL = API.BASE_URL.replace('/api', '');
 
-// ─────────────────────────────────────────────────────────────
-//  Modes persistés entre reconnexions Socket.IO
-//  Quand la socket se déconnecte/reconnecte, on garde le mode
-//  choisi par l'utilisateur (auto ou manuel)
-// ─────────────────────────────────────────────────────────────
 const persistedModes = {
   fan:        'auto',
   heater:     'auto',
@@ -29,7 +24,7 @@ const makeDefault = () => ({
 
 export default function useActuators(coopId, mac, autoStates = {}) {
   const socketRef    = useRef(null);
-  const lastAutoSent = useRef({});   // ← évite le spam de commandes AUTO
+  const lastAutoSent = useRef({});
 
   const [actuators, setActuators] = useState(makeDefault);
   const [connected, setConnected] = useState(false);
@@ -50,7 +45,6 @@ export default function useActuators(coopId, mac, autoStates = {}) {
       socket.emit('join_coop', coopId);
       console.log('[Actuators] Socket connecté :', coopId);
 
-      // ✅ Restaurer les modes persistés après reconnexion
       setActuators((prev) => {
         const restored = { ...prev };
         Object.keys(persistedModes).forEach((key) => {
@@ -67,11 +61,9 @@ export default function useActuators(coopId, mac, autoStates = {}) {
       console.log('[Actuators] Socket déconnecté');
     });
 
-    // État réel des relais depuis ESP32
     socket.on('actuator_state', (data) => {
       if (data.mac !== mac) return;
       console.log('[Actuators] ✅ État reçu depuis ESP32 :', data);
-
       setActuators((prev) => ({
         fan:        { ...prev.fan,        on: data.fan        ?? prev.fan.on,        loading: false },
         heater:     { ...prev.heater,     on: data.heater     ?? prev.heater.on,     loading: false },
@@ -87,7 +79,7 @@ export default function useActuators(coopId, mac, autoStates = {}) {
         const updated = { ...prev };
         if (data.target && updated[data.target]) {
           updated[data.target] = { ...updated[data.target], mode: data.mode, loading: false };
-          persistedModes[data.target] = data.mode;  // persister
+          persistedModes[data.target] = data.mode;
         }
         return updated;
       });
@@ -136,12 +128,16 @@ export default function useActuators(coopId, mac, autoStates = {}) {
   const setMode = useCallback(async (target, mode) => {
     if (!mac) return;
 
-    // ✅ Persister immédiatement pour survivre aux reconnexions
     persistedModes[target] = mode;
 
-    // ✅ Réinitialiser lastAutoSent pour ce target
-    //    → permet à AUTO de renvoyer une commande si nécessaire
-    delete lastAutoSent.current[target];
+    // ✅ CORRECTION bug 2 : en mode MANUEL, figer lastAutoSent à l'état actuel
+    //    → empêche le useEffect AUTO de renvoyer une commande immédiatement
+    //    En AUTO : delete pour forcer une réévaluation propre
+    if (mode === 'manuel') {
+      lastAutoSent.current[target] = actuators[target]?.on ?? false;
+    } else {
+      delete lastAutoSent.current[target];
+    }
 
     setActuators((prev) => ({
       ...prev,
@@ -164,11 +160,9 @@ export default function useActuators(coopId, mac, autoStates = {}) {
         [target]: { ...prev[target], loading: false },
       }));
     }
-  }, [mac]);
+  }, [mac, actuators]);
 
   // ── Mode AUTO — exécution automatique ───────────────────────
-  // ✅ Protection anti-spam : envoie la commande seulement si
-  //    l'état souhaité est DIFFÉRENT de la dernière commande AUTO envoyée
   useEffect(() => {
     if (!mac) return;
 
@@ -176,23 +170,26 @@ export default function useActuators(coopId, mac, autoStates = {}) {
       const actuator = actuators[target];
       if (!actuator) return;
 
-      if (
-        actuator.mode === 'auto' &&
-        !actuator.loading &&
-        lastAutoSent.current[target] !== shouldBeOn  // ← nouveau : évite le spam
-      ) {
-        lastAutoSent.current[target] = shouldBeOn;
-        console.log(`[Actuators] 🤖 AUTO : ${target} → ${shouldBeOn ? 'ON' : 'OFF'}`);
-        // Dans le useEffect auto, avant sendCommand :
-// Pour waterPump, ne pas envoyer ON si on n'a pas de données réelles
-if (target === 'waterPump' && shouldBeOn && actuator.on === false) {
-    // Vérifier que ce n'est pas la valeur par défaut
-    // On fait confiance au firmware pour gérer le démarrage
-    console.log('[Actuators] waterPump AUTO ON ignoré — attente données réelles');
-    return;
-}
-        sendCommand(target, shouldBeOn);
+      // ✅ CORRECTION bug 2 : sortir immédiatement si mode MANUEL
+      if (actuator.mode !== 'auto') return;
+      if (actuator.loading) return;
+      if (lastAutoSent.current[target] === shouldBeOn) return;
+
+      // Protection waterPump : ignorer ON au démarrage sans données réelles
+      if (target === 'waterPump' && shouldBeOn && actuator.on === false) {
+        console.log('[Actuators] waterPump AUTO ON ignoré — attente données réelles');
+        return;
       }
+
+      // Protection heater : ignorer ON au démarrage sans données réelles
+      if (target === 'heater' && shouldBeOn && actuator.on === false) {
+        console.log('[Actuators] heater AUTO ON ignoré — attente données réelles');
+        return;
+      }
+
+      lastAutoSent.current[target] = shouldBeOn;
+      console.log(`[Actuators] 🤖 AUTO : ${target} → ${shouldBeOn ? 'ON' : 'OFF'}`);
+      sendCommand(target, shouldBeOn);
     });
   }, [autoStates, mac]);
 
